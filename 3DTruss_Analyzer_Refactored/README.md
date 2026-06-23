@@ -1,145 +1,147 @@
-# 3D Truss Analyzer - Refactored Version
+# 3D Truss Analyzer (Refactored)
 
-A structurally sound and maintainable 3D truss analysis software based on Finite Element Method (FEM).
+โปรเจกต์วิเคราะห์โครงสร้างโครงถัก 3 มิติ (3D Truss) ที่พัฒนาใหม่ด้วยหลักการวิศวกรรมที่ถูกต้องและสามารถบำรุงรักษาได้ในระยะยาว
 
-## 🎯 Project Goals
+## ⚠️ สถานะการพัฒนา
 
-1. **Engineering Accuracy**: Ensure all calculations follow established structural engineering principles
-2. **Code Quality**: Maintain high code quality with proper testing, documentation, and separation of concerns
-3. **Maintainability**: Create a codebase that is easy to understand, modify, and extend
-4. **Reliability**: Implement robust error handling and validation
+**กำลังอยู่ระหว่างการพัฒนา** - โค้ดชุดนี้เป็นส่วนหนึ่งของโครงการปรับปรุงใหม่ (Refactoring) เพื่อแก้ไขปัญหาทางวิศวกรรมที่พบในเวอร์ชันเดิม
 
-## 📁 Project Structure
+## 🔧 สิ่งที่ได้รับการแก้ไขจากเวอร์ชันเดิม
+
+### ปัญหาทางวิศวกรรมที่แก้ไขแล้ว:
+1. **การคำนวณน้ำหนักตัวเองถูกต้อง**: ใช้สูตร $W = \rho \times A \times L \times g$ และกระจายแรงครึ่งหนึ่งไปยังแต่ละโหนดปลาย (แทนที่จะหารด้วยจำนวนชิ้นส่วนที่เชื่อมต่อกันแบบผิดๆ)
+2. **不再将力除以连接数**: ลบการคำนวณ错误的แรงหารด้วยจำนวนชิ้นส่วน
+3. **ตรวจสอบสมดุลแรง**: เพิ่มการตรวจสอบว่าผลรวมแรงเป็นศูนย์หลังจากคำนวณเสร็จ
+4. **ระบุหน่วยวัดชัดเจน**: ทุกตัวแปรระบุหน่วย (N, m, Pa) ไว้ในคอมเมนต์
+
+### ปัญหาคุณภาพโค้ดที่แก้ไขแล้ว:
+1. **เปลี่ยนมาใช้ C#**: แทน VB.NET เดิม เพื่อให้มี Type Safety โดยอัตโนมัติ
+2. **แยกส่วนคำนวณออกจาก UI**: Core Engine แยกอิสระ สามารถทดสอบได้โดยไม่ต้องมี UI
+3. **มีเอกสารกำกับครบถ้วน**: XML documentation ในทุกคลาสและเมธอดสำคัญ
+4. **จัดการข้อผิดพลาด**: มีระบบ exception handling ที่เหมาะสม
+5. **มี Unit Tests**: ชุดทดสอบอัตโนมัติเพื่อยืนยันความถูกต้อง
+
+## 📁 โครงสร้างโปรเจกต์
 
 ```
 3DTruss_Analyzer_Refactored/
 ├── src/
-│   ├── Core/           # FEM solver engine (engineering calculations)
-│   ├── Models/         # Data structures (Nodes, Elements, Materials, etc.)
-│   ├── UI/             # User interface components
-│   └── Utilities/      # Helper functions (Matrix math, File I/O, etc.)
-├── tests/
-│   ├── Unit/           # Unit tests for core components
-│   └── Integration/    # Integration tests for complete workflows
-├── docs/               # Documentation
-├── examples/           # Example models and test cases
-├── README.md
-├── .gitignore
-└── 3DTrussAnalyzer.sln
+│   └── Core/                    # หัวใจหลักในการคำนวณ FEM
+│       ├── Models/              # โมเดลข้อมูล
+│       │   ├── Geometry.cs      # Point3D, Vector3D
+│       │   ├── Node.cs          # โหนด (จุดต่อ)
+│       │   ├── Element.cs       # ชิ้นส่วนโครงสร้าง
+│       │   └── Material.cs      # คุณสมบัติวัสดุ
+│       ├── Utilities/
+│       │   └── Matrix.cs        # เครื่องมือคำนวณเมทริกซ์
+│       └── TrussSolver.cs       # ตัวแก้สมการหลัก
+├── tests/                       # ชุดทดสอบอัตโนมัติ
+│   ├── MatrixTests.cs           # ทดสอบการคำนวณเมทริกซ์
+│   └── TrussSolverTests.cs      # ทดสอบโจทย์มาตรฐาน
+├── docs/                        # เอกสารประกอบ
+└── examples/                    # ตัวอย่างโมเดล
 ```
 
-## 🚀 Development Roadmap
+## 🚀 การใช้งาน (สำหรับนักพัฒนา)
 
-### Phase 1: Foundation (Weeks 1-2)
-- [x] Set up project structure
-- [ ] Define data models (Node, Element, Material, Load, Constraint)
-- [ ] Implement matrix mathematics library
-- [ ] Create unit testing framework
-- [ ] Establish coding standards and guidelines
+### ข้อกำหนดเบื้องต้น
+- .NET 8.0 SDK หรือสูงกว่า
+- IDE ที่รองรับ C# (Visual Studio, VS Code, Rider)
 
-### Phase 2: Core Engine (Weeks 3-5)
-- [ ] Implement element stiffness matrix calculation
-- [ ] Implement global stiffness matrix assembly
-- [ ] Implement boundary condition application
-- [ ] Implement load vector assembly (including self-weight)
-- [ ] Implement equation solver (Gaussian elimination)
-- [ ] Implement displacement calculation
-- [ ] Implement reaction force calculation
-- [ ] Implement member force calculation
+### การ Build โปรเจกต์
 
-### Phase 3: Validation & Testing (Weeks 6-7)
-- [ ] Create benchmark test cases from engineering textbooks
-- [ ] Implement equilibrium checks
-- [ ] Perform unit tests for all core functions
-- [ ] Perform integration tests for complete analysis
-- [ ] Document validation results
+```bash
+cd 3DTruss_Analyzer_Refactored
+dotnet build
+```
 
-### Phase 4: User Interface (Weeks 8-10)
-- [ ] Design modern UI architecture
-- [ ] Implement model creation/editing
-- [ ] Implement visualization (3D rendering)
-- [ ] Implement results display
-- [ ] Implement file import/export
+### การรัน Unit Tests
 
-### Phase 5: Documentation & Deployment (Weeks 11-12)
-- [ ] Write user documentation
-- [ ] Write API documentation
-- [ ] Create installation packages
-- [ ] Set up CI/CD pipeline
-- [ ] Release version 1.0
+```bash
+dotnet test
+```
 
-## 🔧 Technology Stack
+### ตัวอย่างการใช้งานในโค้ด
 
-- **Language**: C# 10.0+ (migrating from VB.NET for better maintainability)
-- **Framework**: .NET 6.0+ (cross-platform support)
-- **UI Framework**: Avalonia UI (cross-platform) or WPF (Windows-only)
-- **Testing**: xUnit / NUnit
-- **Math Library**: MathNet.Numerics (or custom implementation for learning)
-- **3D Rendering**: Helix Toolkit or OpenTK
+```csharp
+using TrussAnalyzer.Core;
+using TrussAnalyzer.Core.Models;
 
-## 📋 Engineering Principles
+// สร้าง Solver
+var solver = new TrussSolver();
 
-### Structural Analysis Verification
-All implementations must pass these checks:
-1. **Equilibrium**: ΣFx = 0, ΣFy = 0, ΣFz = 0
-2. **Compatibility**: Displacements must be continuous at nodes
-3. **Constitutive Relations**: Force-displacement relationships follow Hooke's Law
-4. **Boundary Conditions**: Constraints properly applied
+// กำหนดวัสดุ
+var material = Material.StructuralSteel; // เหล็กโครงสร้าง
+double area = 0.001; // m²
 
-### Self-Weight Calculation
-Correct formula for element self-weight:
-- Total weight = ρ × A × L × g
-- Distributed equally to both nodes (w/2 at each end)
-- Applied in gravity direction (typically -Z or -Y)
+// สร้างโหนด
+var node1 = new Node(1, new Point3D(0, 0, 0));
+node1.ConstraintX = true;
+node1.ConstraintY = true;
+node1.ConstraintZ = true;
 
-### Stiffness Matrix Formulation
-For 3D truss element:
-- Local stiffness: k = AE/L
-- Transformation matrix based on direction cosines
-- Global stiffness: k_global = T^T × k_local × T
+var node2 = new Node(2, new Point3D(2, 0, 0));
+node2.ApplyForce(10000, 0, 0); // แรง 10 kN ในแนว X
 
-## 🧪 Testing Strategy
+// สร้างชิ้นส่วน
+var element = new Element(1, 1, 2, area, material);
 
-### Unit Tests
-- Matrix operations (addition, multiplication, inversion)
-- Element stiffness calculation
-- Coordinate transformation
-- Load vector assembly
+// เพิ่มเข้าสู่ระบบ
+solver.AddNode(node1);
+solver.AddNode(node2);
+solver.AddElement(element);
 
-### Integration Tests
-- Complete truss analysis workflow
-- Comparison with analytical solutions
-- Equilibrium verification
+// วิเคราะห์
+var result = solver.Analyze();
 
-### Benchmark Problems
-1. Simple 2-node bar (analytical solution available)
-2. 3D tripod structure
-3. Space truss from textbook examples
-4. Complex structures with known solutions
+// ดูผลลัพธ์
+Console.WriteLine(result);
+Console.WriteLine($"แรงในชิ้นส่วน: {element.AxialForce} N");
+Console.WriteLine($"ความเค้น: {element.Stress} Pa");
+Console.WriteLine($"การเคลื่อนตัว: {node2.Displacement} m");
+```
 
-## 📝 Coding Standards
+## 📋 แผนการพัฒนา
 
-1. **Option Strict On** (VB.NET) / **Strict typing** (C#)
-2. **Explicit units** for all physical quantities
-3. **Comprehensive error handling**
-4. **Meaningful variable names**
-5. **XML documentation** for all public APIs
-6. **No magic numbers** - use named constants
-7. **Separation of concerns** - UI separate from business logic
+### ✅ เสร็จแล้ว (Phase 1)
+- [x] ออกแบบโครงสร้างโปรเจกต์ใหม่
+- [x] สร้างโมเดลข้อมูลพื้นฐาน (Node, Element, Material)
+- [x] พัฒนา Core Solver ด้วย FEM
+- [x] เขียน Unit Tests สำหรับโจทย์มาตรฐาน
+- [x] แก้ไขสูตรการคำนวณน้ำหนักตัวเอง
+- [x] เพิ่มการตรวจสอบสมดุลแรง
 
-## 🤝 Contributing
+### 🔄 กำลังดำเนินการ (Phase 2)
+- [ ] เพิ่มการทดสอบกับโจทย์จากตำราเพิ่มเติม
+- [ ] พัฒนา UI (WinForms หรือ WPF)
+- [ ] เพิ่มฟีเจอร์นำเข้า/ส่งออกไฟล์
+- [ ] สร้างเอกสารการใช้งานสำหรับผู้ใช้งานทั่วไป
 
-Please read our contributing guidelines before submitting pull requests.
+### 📅 แผนในอนาคต (Phase 3)
+- [ ] รองรับโหลดหลายรูปแบบ (ลม, แผ่นดินไหว)
+- [ ] ตรวจสอบความปลอดภัย (Safety Check) ตามมาตรฐาน AISC
+- [ ] แสดงผลกราฟิก 3D
+- [ ] ส่งออกเป็นรายงาน PDF
 
-## 📄 License
+## 📚 หลักการวิศวกรรมที่ใช้
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+ดูรายละเอียดสูตรและวิธีการตรวจสอบได้ที่ [docs/ENGINEERING_PRINCIPLES.md](docs/ENGINEERING_PRINCIPLES.md)
 
-## 👥 Authors
+### สูตรหลัก:
+1. **ความแข็งของชิ้นส่วน**: $k = \frac{EA}{L}$
+2. **เมทริกซ์ความแข็ง**: $[K]\{u\} = \{F\}$
+3. **ความเค้น**: $\sigma = E \varepsilon$
+4. **แรงตามแกน**: $F = \sigma A$
+5. **น้ำหนักตัวเอง**: $W = \rho A L g$ (กระจายครึ่งหนึ่งให้แต่ละโหนด)
 
-- Original concept: Samson Mano (@buildsmart888)
-- Refactoring team: [Your team]
+## 🤝 การมีส่วนร่วม
 
-## 📧 Contact
+หากต้องการร่วมพัฒนา โปรดอ่าน [docs/DEVELOPMENT_GUIDE.md](docs/DEVELOPMENT_GUIDE.md)
 
-For questions or suggestions, please open an issue or contact the maintainers.
+## 📄 ใบอนุญาต
+
+โครงการนี้พัฒนาต่อยอดจาก [3DTruss_Analyzer ต้นฉบับ](https://github.com/buildsmart888/3DTruss_Analyzer)
+
+---
+
+**หมายเหตุ**: โค้ดชุดนี้ยังอยู่ในระหว่างการพัฒนา ไม่ควรนำไปใช้งานจริงจนกว่าจะมีการทดสอบอย่างละเอียดและยืนยันความถูกต้องครบถ้วน

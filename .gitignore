@@ -1,24 +1,39 @@
 ```
-# Build results
-bin/
-obj/
-out/
-
-# User-specific files
-.vs/
+# Build artifacts
+*.dll
+*.exe
+*.pdb
 *.userprefs
 *.suo
 *.user
-*.userosscache
-*.sln.docstates
+bin/
+obj/
+Debug/
+Release/
+x64/
+x86/
 
-# Log files
+# Dependencies
+packages/
+node_modules/
+.nuget/
+.nuget.packages/
+
+# Logs and temp files
 *.log
+*.tmp
+*.temp
 
-# Environment specific files
+# Environment
 .env
 .env.local
 *.env.*
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
 
 # OS generated files
 .DS_Store

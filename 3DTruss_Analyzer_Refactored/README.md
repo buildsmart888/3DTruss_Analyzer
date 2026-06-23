@@ -111,17 +111,34 @@ Console.WriteLine($"การเคลื่อนตัว: {node2.Displacement
 - [x] แก้ไขสูตรการคำนวณน้ำหนักตัวเอง
 - [x] เพิ่มการตรวจสอบสมดุลแรง
 
-### 🔄 กำลังดำเนินการ (Phase 2)
+### ✅ เสร็จแล้ว (Phase 2)
 - [x] เพิ่มการทดสอบกับโจทย์จากตำรา (Textbook Benchmark Tests)
+  - Hibbeler 2D Truss Example
+  - Kassimali 3D Space Truss
+  - McGuire Cantilever Truss
+  - Self-weight Validation
 - [x] พัฒนา UI พื้นฐาน (WinForms)
-- [x] เพิ่มฟีเจอร์นำเข้า/ส่งออกไฟล์ (JSON, CSV, Text Report)
-- [ ] สร้างเอกสารการใช้งานสำหรับผู้ใช้งานทั่วไป
+  - หน้าจอหลักพร้อมแท็บ Input, Results, 3D View
+  - กริดใส่ข้อมูลโหนด/ชิ้นส่วน
+  - แสดงผล Displacement, Reaction, Force
+  - ปุ่ม Export PDF และ CSV
+- [x] เพิ่มฟีเจอร์นำเข้า/ส่งออกไฟล์
+  - JSON Import/Export สำหรับโครงสร้าง
+  - CSV Import/Export สำหรับผลลัพธ์
+  - Text Report แบบละเอียด
+- [x] สร้างระบบรายงาน PDF
+  - PdfReportGenerator สร้าง PDF โดยไม่พึ่ง Library ภายนอก
+  - รายงานสรุปผล การเคลื่อนตัว แรงในชิ้นส่วน และสมดุลแรง
+- [x] ตัวอย่างโมเดลทดสอบ
+  - simple_2d_truss.json (Hibbeler)
+  - space_truss_3d.json (Kassimali)
 
-### 📅 แผนในอนาคต (Phase 3)
+### 🔄 กำลังดำเนินการ (Phase 3)
 - [ ] รองรับโหลดหลายรูปแบบ (ลม, แผ่นดินไหว)
 - [ ] ตรวจสอบความปลอดภัย (Safety Check) ตามมาตรฐาน AISC
 - [ ] แสดงผลกราฟิก 3D (OpenGL/SharpGL)
-- [ ] ส่งออกเป็นรายงาน PDF (iTextSharp/PDFsharp)
+- [ ] ปรับปรุง PDF Report ให้สวยงามขึ้น
+- [ ] สร้างเอกสารการใช้งานสำหรับผู้ใช้งานทั่วไป
 
 ## 📚 หลักการวิศวกรรมที่ใช้
 

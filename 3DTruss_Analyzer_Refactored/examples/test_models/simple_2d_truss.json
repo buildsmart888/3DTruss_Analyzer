@@ -1,0 +1,75 @@
+{
+  "projectName": "Simple 2D Truss Example",
+  "description": "Triangular truss from Hibbeler textbook example",
+  "units": {
+    "length": "m",
+    "force": "N",
+    "stress": "Pa"
+  },
+  "materials": [
+    {
+      "id": 1,
+      "name": "Steel",
+      "youngsModulus": 200000000000,
+      "poissonsRatio": 0.3,
+      "density": 7850
+    }
+  ],
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "constraintX": true,
+      "constraintY": true,
+      "constraintZ": true
+    },
+    {
+      "id": 2,
+      "x": 2.0,
+      "y": 2.0,
+      "z": 0.0,
+      "constraintX": false,
+      "constraintY": false,
+      "constraintZ": true,
+      "loadX": 0.0,
+      "loadY": -10000.0,
+      "loadZ": 0.0
+    },
+    {
+      "id": 3,
+      "x": 4.0,
+      "y": 0.0,
+      "z": 0.0,
+      "constraintX": false,
+      "constraintY": true,
+      "constraintZ": true
+    }
+  ],
+  "elements": [
+    {
+      "id": 1,
+      "startNodeId": 1,
+      "endNodeId": 2,
+      "area": 0.001,
+      "materialId": 1
+    },
+    {
+      "id": 2,
+      "startNodeId": 2,
+      "endNodeId": 3,
+      "area": 0.001,
+      "materialId": 1
+    },
+    {
+      "id": 3,
+      "startNodeId": 1,
+      "endNodeId": 3,
+      "area": 0.001,
+      "materialId": 1
+    }
+  ],
+  "includeSelfWeight": false,
+  "gravityAcceleration": 9.81
+}

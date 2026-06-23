@@ -1,31 +1,34 @@
 ```
 # Build artifacts
-*.obj
-*.exe
+bin/
+obj/
 *.dll
+*.exe
 *.pdb
-*.userprefs
-*.cache
-*.log
+*.so
+*.dylib
 
 # Dependencies
 packages/
-lib/
+node_modules/
 
-# IDE specific
-.vs/
-*.user
-*.suo
-*.userosscache
-*.sln.docstates
+# Logs
+*.log
 
-# OS generated
+# OS generated files
 .DS_Store
 Thumbs.db
 
-# Output directories
-bin/
-obj/
-Debug/
-Release/
+# Environment
+.env
+.env.local
+*.env.*
+
+# Testing
+TestResults/
+
+# User-specific files
+.vs/
+.vscode/
+*.userprefs
 ```

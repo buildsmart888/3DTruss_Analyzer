@@ -55,5 +55,35 @@ public class Node
         AppliedForce = new Vector3D(current.X + fx, current.Y + fy, current.Z + fz);
     }
 
+    /// <summary>
+    /// Resets all applied forces to zero.
+    /// Used when switching between load cases.
+    /// </summary>
+    public void ResetForces()
+    {
+        AppliedForce = Vector3D.Zero;
+    }
+
+    /// <summary>
+    /// Sets the displacement vector after analysis.
+    /// </summary>
+    public void SetDisplacement(double dx, double dy, double dz)
+    {
+        Displacement = new Vector3D(dx, dy, dz);
+    }
+
+    /// <summary>
+    /// Sets the reaction force vector after analysis.
+    /// </summary>
+    public void SetReactionForce(double rx, double ry, double rz)
+    {
+        ReactionForce = new Vector3D(rx, ry, rz);
+    }
+
+    /// <summary>
+    /// Checks if the node is constrained in any direction.
+    /// </summary>
+    public bool IsConstrained => ConstraintX || ConstraintY || ConstraintZ;
+
     public override string ToString() => $"Node {Id} at {Position}";
 }

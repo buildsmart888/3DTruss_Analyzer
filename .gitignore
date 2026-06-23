@@ -2,11 +2,11 @@
 # Build artifacts
 bin/
 obj/
-*.dll
 *.exe
+*.dll
 *.pdb
-*.so
-*.dylib
+*.userprefs
+*.useroptions
 
 # Dependencies
 packages/
@@ -15,20 +15,17 @@ node_modules/
 # Logs
 *.log
 
+# Environment specific
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
 # OS generated files
 .DS_Store
 Thumbs.db
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Testing
-TestResults/
-
-# User-specific files
-.vs/
-.vscode/
-*.userprefs
+ehthumbs.db
+Icon?
 ```

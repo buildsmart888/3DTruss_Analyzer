@@ -48,10 +48,10 @@ public class TrussSolver
     public IReadOnlyList<Element> GetElements() => _elements.AsReadOnly();
 
     /// <summary>
-    /// Performs the complete structural analysis.
+    /// Performs the complete structural analysis for a single load case.
     /// Returns: Analysis result with displacements, forces, and reactions.
     /// </summary>
-    public AnalysisResult Analyze()
+    public AnalysisResult Analyze(LoadCase? loadCase = null)
     {
         ValidateStructure();
         
@@ -62,7 +62,13 @@ public class TrussSolver
         _globalStiffnessMatrix = Matrix.Create(numDOF, numDOF);
         _forceVector = new double[numDOF];
 
-        // Step 1: Update element geometry and apply self-weight
+        // Reset all node forces before applying new loads
+        foreach (var node in _nodes)
+        {
+            node.ResetForces();
+        }
+
+        // Step 1: Update element geometry and apply self-weight if needed
         foreach (var element in _elements)
         {
             var startNode = GetNodeById(element.StartNodeId);
@@ -71,15 +77,19 @@ public class TrussSolver
             element.UpdateGeometry(startNode.Position, endNode.Position);
             
             // Apply self-weight to nodes (correctly: half to each node)
-            startNode.AddForce(0, 0, -element.SelfWeightPerNode);
-            endNode.AddForce(0, 0, -element.SelfWeightPerNode);
+            // Only if no specific load case or if load case includes self-weight
+            if (loadCase == null || loadCase.IncludeSelfWeight)
+            {
+                startNode.AddForce(0, 0, -element.SelfWeightPerNode);
+                endNode.AddForce(0, 0, -element.SelfWeightPerNode);
+            }
         }
 
         // Step 2: Assemble global stiffness matrix
         AssembleGlobalStiffnessMatrix(numDOF);
 
         // Step 3: Build force vector from applied loads
-        BuildForceVector(numDOF);
+        BuildForceVector(numDOF, loadCase);
 
         // Step 4: Apply boundary conditions
         ApplyBoundaryConditions(numDOF);
@@ -103,10 +113,58 @@ public class TrussSolver
             EquilibriumSatisfied = equilibriumOK,
             MaxDisplacement = _nodes.Max(n => n.Displacement.Magnitude),
             MaxAxialForce = _elements.Max(e => Math.Abs(e.AxialForce)),
-            MaxStress = _elements.Max(e => Math.Abs(e.Stress))
+            MaxStress = _elements.Max(e => Math.Abs(e.Stress)),
+            LoadCaseName = loadCase?.Name ?? "Default"
         };
 
         return LastResult;
+    }
+
+    /// <summary>
+    /// Performs analysis for multiple load cases and returns all results.
+    /// </summary>
+    public List<AnalysisResult> AnalyzeMultipleLoadCases(List<LoadCase> loadCases)
+    {
+        var results = new List<AnalysisResult>();
+        
+        foreach (var loadCase in loadCases)
+        {
+            var result = Analyze(loadCase);
+            results.Add(result);
+        }
+        
+        return results;
+    }
+
+    /// <summary>
+    /// Performs analysis for load combinations and returns combined results.
+    /// </summary>
+    public List<AnalysisResult> AnalyzeLoadCombinations(
+        List<LoadCombination> combinations, 
+        Dictionary<string, LoadCase> allLoadCases)
+    {
+        var results = new List<AnalysisResult>();
+        
+        foreach (var combination in combinations)
+        {
+            // Calculate combined forces
+            var combinedForces = combination.CalculateCombinedForces(allLoadCases);
+            
+            // Create a temporary load case for this combination
+            var tempLoadCase = new LoadCase
+            {
+                CaseId = combination.CombinationId,
+                Name = combination.Name,
+                Type = LoadCaseType.Static,
+                NodeForces = combinedForces,
+                IncludeSelfWeight = false // Self-weight already included in individual load cases
+            };
+            
+            var result = Analyze(tempLoadCase);
+            results.Add(result);
+        }
+        
+        return results;
     }
 
     /// <summary>
@@ -159,8 +217,28 @@ public class TrussSolver
     /// <summary>
     /// Builds the global force vector from nodal applied forces.
     /// </summary>
-    private void BuildForceVector(int numDOF)
+    private void BuildForceVector(int numDOF, LoadCase? loadCase = null)
     {
+        // Reset all forces first
+        foreach (var node in _nodes)
+        {
+            node.ResetForces();
+        }
+
+        // If a specific load case is provided, apply forces from that load case
+        if (loadCase != null)
+        {
+            foreach (var nodeForceEntry in loadCase.NodeForces)
+            {
+                int nodeId = nodeForceEntry.Key;
+                var force = nodeForceEntry.Value;
+                
+                var node = GetNodeById(nodeId);
+                node.AddForce(force.Fx, force.Fy, force.Fz);
+            }
+        }
+
+        // Build the force vector from node applied forces
         foreach (var node in _nodes)
         {
             int idx = _nodeIndexMap[node.Id] * 3;
@@ -227,7 +305,7 @@ public class TrussSolver
         foreach (var node in _nodes)
         {
             int idx = _nodeIndexMap[node.Id] * 3;
-            node.Displacement = new Vector3D(
+            node.SetDisplacement(
                 _displacementVector[idx],
                 _displacementVector[idx + 1],
                 _displacementVector[idx + 2]
@@ -250,7 +328,7 @@ public class TrussSolver
                 rz = CalculateReaction(idx + 2) - node.AppliedForce.Z;
             }
 
-            node.ReactionForce = new Vector3D(rx, ry, rz);
+            node.SetReactionForce(rx, ry, rz);
         }
     }
 
@@ -357,13 +435,30 @@ public class AnalysisResult
     public double MaxDisplacement { get; init; }
     public double MaxAxialForce { get; init; }
     public double MaxStress { get; init; }
+    
+    /// <summary>
+    /// Name of the load case used for this analysis
+    /// </summary>
+    public string LoadCaseName { get; init; } = "Default";
+    
+    /// <summary>
+    /// Total applied load magnitude (sum of all nodal forces)
+    /// </summary>
+    public double TotalAppliedLoad => Nodes.Sum(n => n.AppliedForce.Magnitude);
+    
+    /// <summary>
+    /// Total reaction force magnitude (sum of all reaction forces)
+    /// </summary>
+    public double TotalReactionForce => Nodes.Sum(n => n.ReactionForce.Magnitude);
 
     public override string ToString()
     {
-        return $"Analysis Result:\n" +
+        return $"Analysis Result ({LoadCaseName}):\n" +
                $"  Equilibrium: {(EquilibriumSatisfied ? "✓ Satisfied" : "✗ NOT Satisfied")}\n" +
                $"  Max Displacement: {MaxDisplacement:E4} m\n" +
                $"  Max Axial Force: {MaxAxialForce:E2} N\n" +
-               $"  Max Stress: {MaxStress:E2} Pa";
+               $"  Max Stress: {MaxStress:E2} Pa\n" +
+               $"  Total Applied Load: {TotalAppliedLoad:F2} N\n" +
+               $"  Total Reaction Force: {TotalReactionForce:F2} N";
     }
 }

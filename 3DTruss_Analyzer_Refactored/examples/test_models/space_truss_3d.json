@@ -1,0 +1,84 @@
+{
+  "projectName": "3D Space Truss Example",
+  "description": "Tetrahedron space truss from Kassimali textbook",
+  "units": {
+    "length": "m",
+    "force": "N",
+    "stress": "Pa"
+  },
+  "materials": [
+    {
+      "id": 1,
+      "name": "Steel",
+      "youngsModulus": 200000000000,
+      "poissonsRatio": 0.3,
+      "density": 7850
+    }
+  ],
+  "nodes": [
+    {
+      "id": 1,
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0,
+      "constraintX": true,
+      "constraintY": true,
+      "constraintZ": true
+    },
+    {
+      "id": 2,
+      "x": 3.0,
+      "y": 0.0,
+      "z": 0.0,
+      "constraintX": true,
+      "constraintY": true,
+      "constraintZ": true
+    },
+    {
+      "id": 3,
+      "x": 1.5,
+      "y": 2.598,
+      "z": 0.0,
+      "constraintX": true,
+      "constraintY": true,
+      "constraintZ": true
+    },
+    {
+      "id": 4,
+      "x": 1.5,
+      "y": 0.866,
+      "z": 2.5,
+      "constraintX": false,
+      "constraintY": false,
+      "constraintZ": false,
+      "loadX": 0.0,
+      "loadY": 0.0,
+      "loadZ": -50000.0
+    }
+  ],
+  "elements": [
+    {
+      "id": 1,
+      "startNodeId": 1,
+      "endNodeId": 4,
+      "area": 0.005,
+      "materialId": 1
+    },
+    {
+      "id": 2,
+      "startNodeId": 2,
+      "endNodeId": 4,
+      "area": 0.005,
+      "materialId": 1
+    },
+    {
+      "id": 3,
+      "startNodeId": 3,
+      "endNodeId": 4,
+      "area": 0.005,
+      "materialId": 1
+    }
+  ],
+  "includeSelfWeight": false,
+  "gravityAcceleration": 9.81
+}

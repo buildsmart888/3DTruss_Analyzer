@@ -1,26 +1,31 @@
 ```
-# Build results
+# Build artifacts
 bin/
 obj/
-out/
-
-# User-specific files
-.vs/
+*.exe
+*.dll
+*.pdb
 *.userprefs
-*.suo
-*.user
-*.userosscache
-*.sln.docstates
+*.useroptions
 
-# Log files
+# Dependencies
+packages/
+node_modules/
+
+# Logs
 *.log
 
-# Environment specific files
-.env
-.env.local
-*.env.*
+# Environment specific
+.vs/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
 
 # OS generated files
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Icon?
 ```

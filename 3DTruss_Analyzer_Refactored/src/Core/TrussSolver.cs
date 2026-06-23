@@ -1,357 +1,464 @@
-using System;
-using System.Collections.Generic;
-using _3DTrussAnalyzer.Models;
-using _3DTrussAnalyzer.Utilities;
+namespace TrussAnalyzer.Core;
 
-namespace _3DTrussAnalyzer.Core
+using TrussAnalyzer.Core.Models;
+using TrussAnalyzer.Core.Utilities;
+
+/// <summary>
+/// Main solver class for 3D truss analysis using the Finite Element Method (FEM).
+/// Implements direct stiffness method with proper engineering principles.
+/// </summary>
+public class TrussSolver
 {
-    /// <summary>
-    /// Result of a truss analysis operation
-    /// </summary>
-    public class AnalysisResult
+    private readonly List<Node> _nodes = new();
+    private readonly List<Element> _elements = new();
+    private readonly Dictionary<int, int> _nodeIndexMap = new();
+    
+    /// <summary>Global stiffness matrix</summary>
+    private double[,] _globalStiffnessMatrix = Array.Empty<double[]>();
+    
+    /// <summary>Global force vector (units: N)</summary>
+    private double[] _forceVector = Array.Empty<double>();
+    
+    /// <summary>Displacement solution vector (units: m)</summary>
+    private double[] _displacementVector = Array.Empty<double>();
+
+    /// <summary>Analysis results summary</summary>
+    public AnalysisResult? LastResult { get; private set; }
+
+    /// <summary>Add a node to the structure</summary>
+    public void AddNode(Node node)
     {
-        public bool Success { get; set; }
-        public string ErrorMessage { get; set; }
-        public List<string> Warnings { get; set; } = new List<string>();
-        public int NumberOfNodes { get; set; }
-        public int NumberOfElements { get; set; }
-        public int TotalDOF { get; set; }
-        public int FreeDOF { get; set; }
-        public double[] Displacements { get; set; }
-        public double[] Reactions { get; set; }
-        public Dictionary<int, double> ElementForces { get; set; }
-        public double TotalAppliedForceX { get; set; }
-        public double TotalAppliedForceY { get; set; }
-        public double TotalAppliedForceZ { get; set; }
-        public double TotalReactionForceX { get; set; }
-        public double TotalReactionForceY { get; set; }
-        public double TotalReactionForceZ { get; set; }
-        public bool EquilibriumSatisfied { get; set; }
-        public double EquilibriumErrorX { get; set; }
-        public double EquilibriumErrorY { get; set; }
-        public double EquilibriumErrorZ { get; set; }
+        if (_nodeIndexMap.ContainsKey(node.Id))
+            throw new InvalidOperationException($"Node with ID {node.Id} already exists.");
+        
+        _nodeIndexMap[node.Id] = _nodes.Count;
+        _nodes.Add(node);
+    }
+
+    /// <summary>Add an element to the structure</summary>
+    public void AddElement(Element element)
+    {
+        _elements.Add(element);
+    }
+
+    /// <summary>Get all nodes</summary>
+    public IReadOnlyList<Node> GetNodes() => _nodes.AsReadOnly();
+
+    /// <summary>Get all elements</summary>
+    public IReadOnlyList<Element> GetElements() => _elements.AsReadOnly();
+
+    /// <summary>
+    /// Performs the complete structural analysis for a single load case.
+    /// Returns: Analysis result with displacements, forces, and reactions.
+    /// </summary>
+    public AnalysisResult Analyze(LoadCase? loadCase = null)
+    {
+        ValidateStructure();
+        
+        int numNodes = _nodes.Count;
+        int numDOF = numNodes * 3; // 3 DOF per node (X, Y, Z)
+
+        // Initialize global matrices
+        _globalStiffnessMatrix = Matrix.Create(numDOF, numDOF);
+        _forceVector = new double[numDOF];
+
+        // Reset all node forces before applying new loads
+        foreach (var node in _nodes)
+        {
+            node.ResetForces();
+        }
+
+        // Step 1: Update element geometry and apply self-weight if needed
+        foreach (var element in _elements)
+        {
+            var startNode = GetNodeById(element.StartNodeId);
+            var endNode = GetNodeById(element.EndNodeId);
+            
+            element.UpdateGeometry(startNode.Position, endNode.Position);
+            
+            // Apply self-weight to nodes (correctly: half to each node)
+            // Only if no specific load case or if load case includes self-weight
+            if (loadCase == null || loadCase.IncludeSelfWeight)
+            {
+                startNode.AddForce(0, 0, -element.SelfWeightPerNode);
+                endNode.AddForce(0, 0, -element.SelfWeightPerNode);
+            }
+        }
+
+        // Step 2: Assemble global stiffness matrix
+        AssembleGlobalStiffnessMatrix(numDOF);
+
+        // Step 3: Build force vector from applied loads
+        BuildForceVector(numDOF, loadCase);
+
+        // Step 4: Apply boundary conditions
+        ApplyBoundaryConditions(numDOF);
+
+        // Step 5: Solve for displacements
+        _displacementVector = Matrix.Solve(_globalStiffnessMatrix, _forceVector);
+
+        // Step 6: Extract displacements and calculate reactions
+        ExtractResults(numDOF);
+
+        // Step 7: Calculate element forces and stresses
+        CalculateElementForces();
+
+        // Step 8: Verify equilibrium
+        bool equilibriumOK = VerifyEquilibrium();
+
+        LastResult = new AnalysisResult
+        {
+            Nodes = _nodes.ToList(),
+            Elements = _elements.ToList(),
+            EquilibriumSatisfied = equilibriumOK,
+            MaxDisplacement = _nodes.Max(n => n.Displacement.Magnitude),
+            MaxAxialForce = _elements.Max(e => Math.Abs(e.AxialForce)),
+            MaxStress = _elements.Max(e => Math.Abs(e.Stress)),
+            LoadCaseName = loadCase?.Name ?? "Default"
+        };
+
+        return LastResult;
     }
 
     /// <summary>
-    /// 3D Truss Solver using Finite Element Method
-    /// Implements direct stiffness method for space truss analysis
+    /// Performs analysis for multiple load cases and returns all results.
     /// </summary>
-    public class TrussSolver
+    public List<AnalysisResult> AnalyzeMultipleLoadCases(List<LoadCase> loadCases)
     {
-        private readonly List<Node> _nodes;
-        private readonly List<Element> _elements;
-        private readonly double _gravityAcceleration;
-
-        public TrussSolver(List<Node> nodes, List<Element> elements, double gravityAcceleration = 9.81)
+        var results = new List<AnalysisResult>();
+        
+        foreach (var loadCase in loadCases)
         {
-            _nodes = nodes ?? throw new ArgumentNullException(nameof(nodes));
-            _elements = elements ?? throw new ArgumentNullException(nameof(elements));
-            _gravityAcceleration = gravityAcceleration;
+            var result = Analyze(loadCase);
+            results.Add(result);
         }
+        
+        return results;
+    }
 
-        /// <summary>
-        /// Performs complete truss analysis
-        /// </summary>
-        public AnalysisResult Analyze(bool includeSelfWeight = false, 
-                                     double accelX = 0, double accelY = 0, double accelZ = -1)
+    /// <summary>
+    /// Performs analysis for load combinations and returns combined results.
+    /// </summary>
+    public List<AnalysisResult> AnalyzeLoadCombinations(
+        List<LoadCombination> combinations, 
+        Dictionary<string, LoadCase> allLoadCases)
+    {
+        var results = new List<AnalysisResult>();
+        
+        foreach (var combination in combinations)
         {
-            var result = new AnalysisResult();
+            // Calculate combined forces
+            var combinedForces = combination.CalculateCombinedForces(allLoadCases);
             
-            try
+            // Create a temporary load case for this combination
+            var tempLoadCase = new LoadCase
             {
-                var validationErrors = ValidateModel();
-                if (validationErrors.Count > 0)
-                {
-                    result.Success = false;
-                    result.ErrorMessage = string.Join("\n", validationErrors);
-                    return result;
-                }
-
-                result.NumberOfNodes = _nodes.Count;
-                result.NumberOfElements = _elements.Count;
-
-                foreach (var element in _elements)
-                {
-                    var startNode = GetNode(element.StartNodeId);
-                    var endNode = GetNode(element.EndNodeId);
-                    element.UpdateGeometry(startNode.Coordinates, endNode.Coordinates);
-                }
-
-                int totalDOF = _nodes.Count * 3;
-                result.TotalDOF = totalDOF;
-
-                var globalStiffness = new Matrix(totalDOF, totalDOF);
-                var globalForce = new Matrix(totalDOF, 1);
-                var dofConstraint = new int[totalDOF];
-
-                for (int i = 0; i < _nodes.Count; i++)
-                {
-                    var node = _nodes[i];
-                    dofConstraint[i * 3 + 0] = node.Constraint.IsXFixed ? -1 : 0;
-                    dofConstraint[i * 3 + 1] = node.Constraint.IsYFixed ? -1 : 0;
-                    dofConstraint[i * 3 + 2] = node.Constraint.IsZFixed ? -1 : 0;
-                }
-
-                for (int i = 0; i < _nodes.Count; i++)
-                {
-                    var node = _nodes[i];
-                    globalForce[i * 3 + 0, 0] = node.AppliedForce.X;
-                    globalForce[i * 3 + 1, 0] = node.AppliedForce.Y;
-                    globalForce[i * 3 + 2, 0] = node.AppliedForce.Z;
-
-                    result.TotalAppliedForceX += node.AppliedForce.X;
-                    result.TotalAppliedForceY += node.AppliedForce.Y;
-                    result.TotalAppliedForceZ += node.AppliedForce.Z;
-                }
-
-                if (includeSelfWeight)
-                {
-                    AddSelfWeight(globalForce, accelX, accelY, accelZ);
-                }
-
-                AssembleStiffnessMatrix(globalStiffness);
-
-                int freeDOF = 0;
-                for (int i = 0; i < totalDOF; i++)
-                {
-                    if (dofConstraint[i] == 0) freeDOF++;
-                }
-                result.FreeDOF = freeDOF;
-
-                if (freeDOF == 0)
-                {
-                    result.Success = false;
-                    result.ErrorMessage = "No free degrees of freedom.";
-                    return result;
-                }
-
-                var solution = ApplyBoundaryConditionsAndSolve(
-                    globalStiffness, globalForce, dofConstraint, totalDOF, freeDOF);
-
-                if (!solution.Success)
-                {
-                    result.Success = false;
-                    result.ErrorMessage = solution.ErrorMessage;
-                    return result;
-                }
-
-                ExtractResults(solution.Displacements, result, totalDOF);
-                CalculateReactions(globalStiffness, solution.Displacements, globalForce, result);
-                CalculateElementForces(result);
-                CheckEquilibrium(result);
-
-                result.Success = true;
-            }
-            catch (Exception ex)
-            {
-                result.Success = false;
-                result.ErrorMessage = $"Analysis failed: {ex.Message}";
-            }
-
-            return result;
-        }
-
-        private List<string> ValidateModel()
-        {
-            var errors = new List<string>();
-            if (_nodes.Count == 0) errors.Add("No nodes defined");
-            if (_elements.Count == 0) errors.Add("No elements defined");
-
-            bool hasConstraints = false;
-            foreach (var node in _nodes)
-            {
-                if (node.IsConstrained) { hasConstraints = true; break; }
-            }
-            if (!hasConstraints) errors.Add("No constraints defined. Structure is unstable.");
-
-            return errors;
-        }
-
-        private Node GetNode(int nodeId) => _nodes.Find(n => n.Id == nodeId);
-
-        private void AddSelfWeight(Matrix forceVector, double ax, double ay, double az)
-        {
-            foreach (var element in _elements)
-            {
-                double totalWeight = element.Material.Density * element.Area * element.Length * _gravityAcceleration;
-                double fx = (ax / Math.Abs(az)) * (totalWeight / 2.0);
-                double fy = (ay / Math.Abs(az)) * (totalWeight / 2.0);
-                double fz = (az / Math.Abs(az)) * (totalWeight / 2.0);
-
-                var startNode = GetNode(element.StartNodeId);
-                var endNode = GetNode(element.EndNodeId);
-                int startIdx = _nodes.IndexOf(startNode) * 3;
-                int endIdx = _nodes.IndexOf(endNode) * 3;
-
-                forceVector[startIdx + 0, 0] += fx;
-                forceVector[startIdx + 1, 0] += fy;
-                forceVector[startIdx + 2, 0] += fz;
-                forceVector[endIdx + 0, 0] += fx;
-                forceVector[endIdx + 1, 0] += fy;
-                forceVector[endIdx + 2, 0] += fz;
-            }
-        }
-
-        private void AssembleStiffnessMatrix(Matrix globalStiffness)
-        {
-            foreach (var element in _elements)
-            {
-                var startNode = GetNode(element.StartNodeId);
-                var endNode = GetNode(element.EndNodeId);
-                int startIdx = _nodes.IndexOf(startNode) * 3;
-                int endIdx = _nodes.IndexOf(endNode) * 3;
-                var elemStiffness = CalculateElementStiffnessMatrix(element);
-                int[] dofIndices = { startIdx, startIdx + 1, startIdx + 2, endIdx, endIdx + 1, endIdx + 2 };
-
-                for (int i = 0; i < 6; i++)
-                    for (int j = 0; j < 6; j++)
-                        globalStiffness[dofIndices[i], dofIndices[j]] += elemStiffness[i, j];
-            }
-        }
-
-        private Matrix CalculateElementStiffnessMatrix(Element element)
-        {
-            double k = element.StiffnessCoefficient;
-            var lc = element.DirectionCosines;
-            var stiffness = new Matrix(6, 6);
-
-            double[,] cMatrix = {
-                { lc.X * lc.X, lc.X * lc.Y, lc.X * lc.Z },
-                { lc.Y * lc.X, lc.Y * lc.Y, lc.Y * lc.Z },
-                { lc.Z * lc.X, lc.Z * lc.Y, lc.Z * lc.Z }
+                CaseId = combination.CombinationId,
+                Name = combination.Name,
+                Type = LoadCaseType.Static,
+                NodeForces = combinedForces,
+                IncludeSelfWeight = false // Self-weight already included in individual load cases
             };
+            
+            var result = Analyze(tempLoadCase);
+            results.Add(result);
+        }
+        
+        return results;
+    }
 
+    /// <summary>
+    /// Assembles the global stiffness matrix from element stiffness matrices.
+    /// For 3D truss element, the stiffness matrix is 6x6 (2 nodes × 3 DOF).
+    /// </summary>
+    private void AssembleGlobalStiffnessMatrix(int numDOF)
+    {
+        foreach (var element in _elements)
+        {
+            double k = element.GetStiffnessCoefficient(); // EA/L
+            var n = element.DirectionCosines; // Direction cosines [nx, ny, nz]
+
+            // Element stiffness matrix in global coordinates (6×6)
+            // k_local = k * [n⊗n] where ⊗ is outer product
+            var kMatrix = new double[6, 6];
+            
+            // Fill the 6×6 element stiffness matrix
+            // DOF order: [startX, startY, startZ, endX, endY, endZ]
+            double[] nx = { n.X, n.Y, n.Z };
+            
             for (int i = 0; i < 3; i++)
             {
                 for (int j = 0; j < 3; j++)
                 {
-                    stiffness[i, j] = k * cMatrix[i, j];
-                    stiffness[i + 3, j + 3] = k * cMatrix[i, j];
-                    stiffness[i, j + 3] = -k * cMatrix[i, j];
-                    stiffness[i + 3, j] = -k * cMatrix[i, j];
+                    double kij = k * nx[i] * nx[j];
+                    kMatrix[i, j] = kij;           // start-start
+                    kMatrix[i, j + 3] = -kij;      // start-end
+                    kMatrix[i + 3, j] = -kij;      // end-start
+                    kMatrix[i + 3, j + 3] = kij;   // end-end
                 }
             }
-            return stiffness;
-        }
 
-        private (bool Success, string ErrorMessage, double[] Displacements) ApplyBoundaryConditionsAndSolve(
-            Matrix globalStiffness, Matrix globalForce, int[] dofConstraint, int totalDOF, int freeDOF)
+            // Map element DOF to global DOF
+            int startIdx = _nodeIndexMap[element.StartNodeId] * 3;
+            int endIdx = _nodeIndexMap[element.EndNodeId] * 3;
+            int[] dofMap = { startIdx, startIdx + 1, startIdx + 2, endIdx, endIdx + 1, endIdx + 2 };
+
+            // Add to global matrix
+            for (int i = 0; i < 6; i++)
+            {
+                for (int j = 0; j < 6; j++)
+                {
+                    _globalStiffnessMatrix[dofMap[i], dofMap[j]] += kMatrix[i, j];
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Builds the global force vector from nodal applied forces.
+    /// </summary>
+    private void BuildForceVector(int numDOF, LoadCase? loadCase = null)
+    {
+        // Reset all forces first
+        foreach (var node in _nodes)
         {
-            var reducedStiffness = new Matrix(freeDOF, freeDOF);
-            var reducedForce = new Matrix(freeDOF, 1);
-            int[] freeDOFIndices = new int[freeDOF];
-            int freeCount = 0;
-
-            for (int i = 0; i < totalDOF; i++)
-            {
-                if (dofConstraint[i] == 0) { freeDOFIndices[freeCount] = i; freeCount++; }
-            }
-
-            for (int i = 0; i < freeDOF; i++)
-            {
-                reducedForce[i, 0] = globalForce[freeDOFIndices[i], 0];
-                for (int j = 0; j < freeDOF; j++)
-                    reducedStiffness[i, j] = globalStiffness[freeDOFIndices[i], freeDOFIndices[j]];
-            }
-
-            var reducedDisplacement = new Matrix(freeDOF, 1);
-            bool solved = MatrixSolver.GaussianElimination(reducedStiffness, reducedForce, reducedDisplacement);
-
-            if (!solved)
-                return (false, "Failed to solve system. Structure may be unstable.", null);
-
-            double[] fullDisplacements = new double[totalDOF];
-            for (int i = 0; i < freeDOF; i++)
-                fullDisplacements[freeDOFIndices[i]] = reducedDisplacement[i, 0];
-
-            return (true, null, fullDisplacements);
+            node.ResetForces();
         }
 
-        private void ExtractResults(double[] displacements, AnalysisResult result, int totalDOF)
+        // If a specific load case is provided, apply forces from that load case
+        if (loadCase != null)
         {
-            result.Displacements = displacements;
-            for (int i = 0; i < _nodes.Count; i++)
+            foreach (var nodeForceEntry in loadCase.NodeForces)
             {
-                _nodes[i].Displacement = new Vector3D(
-                    displacements[i * 3 + 0], displacements[i * 3 + 1], displacements[i * 3 + 2]);
+                int nodeId = nodeForceEntry.Key;
+                var force = nodeForceEntry.Value;
+                
+                var node = GetNodeById(nodeId);
+                node.AddForce(force.Fx, force.Fy, force.Fz);
             }
         }
 
-        private void CalculateReactions(Matrix globalStiffness, double[] displacements, 
-                                       Matrix appliedForce, AnalysisResult result)
+        // Build the force vector from node applied forces
+        foreach (var node in _nodes)
         {
-            var reactions = new Matrix(globalStiffness.Rows, 1);
-            for (int i = 0; i < globalStiffness.Rows; i++)
-            {
-                double ku = 0;
-                for (int j = 0; j < globalStiffness.Cols; j++)
-                    ku += globalStiffness[i, j] * displacements[j];
-                reactions[i, 0] = ku - appliedForce[i, 0];
-            }
-
-            result.Reactions = new double[reactions.Rows];
-            for (int i = 0; i < reactions.Rows; i++)
-            {
-                result.Reactions[i] = reactions[i, 0];
-                _nodes[i / 3].ReactionForce = i % 3 == 0 ? 
-                    new Vector3D(reactions[i, 0], reactions[i + 1, 0], reactions[i + 2, 0]) :
-                    _nodes[i / 3].ReactionForce;
-            }
-
-            for (int i = 0; i < _nodes.Count; i++)
-            {
-                result.TotalReactionForceX += _nodes[i].ReactionForce.X;
-                result.TotalReactionForceY += _nodes[i].ReactionForce.Y;
-                result.TotalReactionForceZ += _nodes[i].ReactionForce.Z;
-            }
+            int idx = _nodeIndexMap[node.Id] * 3;
+            _forceVector[idx] = node.AppliedForce.X;
+            _forceVector[idx + 1] = node.AppliedForce.Y;
+            _forceVector[idx + 2] = node.AppliedForce.Z;
         }
+    }
 
-        private void CalculateElementForces(AnalysisResult result)
+    /// <summary>
+    /// Applies boundary conditions by modifying the stiffness matrix and force vector.
+    /// Uses the penalty-free approach: zero out rows/cols and set diagonal to 1.
+    /// </summary>
+    private void ApplyBoundaryConditions(int numDOF)
+    {
+        foreach (var node in _nodes)
         {
-            result.ElementForces = new Dictionary<int, double>();
-            foreach (var element in _elements)
+            int idx = _nodeIndexMap[node.Id] * 3;
+            
+            // X direction
+            if (node.ConstraintX)
             {
-                var startNode = GetNode(element.StartNodeId);
-                var endNode = GetNode(element.EndNodeId);
-                double dx = endNode.Displacement.X - startNode.Displacement.X;
-                double dy = endNode.Displacement.Y - startNode.Displacement.Y;
-                double dz = endNode.Displacement.Z - startNode.Displacement.Z;
-
-                double axialDeformation = dx * element.DirectionCosines.X +
-                                         dy * element.DirectionCosines.Y +
-                                         dz * element.DirectionCosines.Z;
-
-                element.AxialDeformation = axialDeformation;
-                element.AxialForce = element.StiffnessCoefficient * axialDeformation;
-                element.AxialStress = element.AxialForce / element.Area;
-                result.ElementForces[element.Id] = element.AxialForce;
+                ZeroOutRowAndColumn(idx);
+                _globalStiffnessMatrix[idx, idx] = 1.0;
+                _forceVector[idx] = 0.0;
+            }
+            
+            // Y direction
+            if (node.ConstraintY)
+            {
+                ZeroOutRowAndColumn(idx + 1);
+                _globalStiffnessMatrix[idx + 1, idx + 1] = 1.0;
+                _forceVector[idx + 1] = 0.0;
+            }
+            
+            // Z direction
+            if (node.ConstraintZ)
+            {
+                ZeroOutRowAndColumn(idx + 2);
+                _globalStiffnessMatrix[idx + 2, idx + 2] = 1.0;
+                _forceVector[idx + 2] = 0.0;
             }
         }
+    }
 
-        private void CheckEquilibrium(AnalysisResult result)
+    /// <summary>
+    /// Zeros out a row and column in the global stiffness matrix.
+    /// </summary>
+    private void ZeroOutRowAndColumn(int dofIndex)
+    {
+        int numDOF = _globalStiffnessMatrix.GetLength(0);
+        for (int i = 0; i < numDOF; i++)
         {
-            result.EquilibriumErrorX = result.TotalAppliedForceX + result.TotalReactionForceX;
-            result.EquilibriumErrorY = result.TotalAppliedForceY + result.TotalReactionForceY;
-            result.EquilibriumErrorZ = result.TotalAppliedForceZ + result.TotalReactionForceZ;
-
-            double tolerance = 1e-6;
-            double maxForce = Math.Max(Math.Abs(result.TotalAppliedForceX), 
-                              Math.Max(Math.Abs(result.TotalAppliedForceY), 
-                                      Math.Abs(result.TotalAppliedForceZ)));
-            if (maxForce < 1e-10) maxForce = 1.0;
-
-            result.EquilibriumSatisfied = 
-                Math.Abs(result.EquilibriumErrorX) / maxForce < tolerance &&
-                Math.Abs(result.EquilibriumErrorY) / maxForce < tolerance &&
-                Math.Abs(result.EquilibriumErrorZ) / maxForce < tolerance;
-
-            if (!result.EquilibriumSatisfied)
-            {
-                result.Warnings.Add("WARNING: Equilibrium check failed.");
-                result.Warnings.Add($"  Force error X: {result.EquilibriumErrorX:E3} N");
-                result.Warnings.Add($"  Force error Y: {result.EquilibriumErrorY:E3} N");
-                result.Warnings.Add($"  Force error Z: {result.EquilibriumErrorZ:E3} N");
-            }
+            _globalStiffnessMatrix[dofIndex, i] = 0.0;
+            _globalStiffnessMatrix[i, dofIndex] = 0.0;
         }
+    }
+
+    /// <summary>
+    /// Extracts displacement results and calculates reaction forces.
+    /// </summary>
+    private void ExtractResults(int numDOF)
+    {
+        foreach (var node in _nodes)
+        {
+            int idx = _nodeIndexMap[node.Id] * 3;
+            node.SetDisplacement(
+                _displacementVector[idx],
+                _displacementVector[idx + 1],
+                _displacementVector[idx + 2]
+            );
+
+            // Calculate reaction forces: R = K × u - F_applied
+            // For constrained DOFs only
+            double rx = 0, ry = 0, rz = 0;
+            
+            if (node.ConstraintX)
+            {
+                rx = CalculateReaction(idx) - node.AppliedForce.X;
+            }
+            if (node.ConstraintY)
+            {
+                ry = CalculateReaction(idx + 1) - node.AppliedForce.Y;
+            }
+            if (node.ConstraintZ)
+            {
+                rz = CalculateReaction(idx + 2) - node.AppliedForce.Z;
+            }
+
+            node.SetReactionForce(rx, ry, rz);
+        }
+    }
+
+    /// <summary>
+    /// Calculates reaction force at a specific DOF.
+    /// </summary>
+    private double CalculateReaction(int dofIndex)
+    {
+        double reaction = 0;
+        int numDOF = _globalStiffnessMatrix.GetLength(0);
+        
+        for (int j = 0; j < numDOF; j++)
+        {
+            reaction += _globalStiffnessMatrix[dofIndex, j] * _displacementVector[j];
+        }
+        
+        return reaction;
+    }
+
+    /// <summary>
+    /// Calculates axial forces and stresses in all elements.
+    /// </summary>
+    private void CalculateElementForces()
+    {
+        foreach (var element in _elements)
+        {
+            var startNode = GetNodeById(element.StartNodeId);
+            var endNode = GetNodeById(element.EndNodeId);
+            
+            element.UpdateForces(startNode.Displacement, endNode.Displacement);
+        }
+    }
+
+    /// <summary>
+    /// Verifies that the structure is in equilibrium.
+    /// Sum of (Applied Forces + Reactions) should equal zero.
+    /// </summary>
+    private bool VerifyEquilibrium()
+    {
+        double sumFx = 0, sumFy = 0, sumFz = 0;
+        
+        foreach (var node in _nodes)
+        {
+            sumFx += node.AppliedForce.X + node.ReactionForce.X;
+            sumFy += node.AppliedForce.Y + node.ReactionForce.Y;
+            sumFz += node.AppliedForce.Z + node.ReactionForce.Z;
+        }
+
+        double tolerance = 1e-6;
+        bool ok = Math.Abs(sumFx) < tolerance && 
+                  Math.Abs(sumFy) < tolerance && 
+                  Math.Abs(sumFz) < tolerance;
+
+        return ok;
+    }
+
+    /// <summary>
+    /// Validates the structure before analysis.
+    /// </summary>
+    private void ValidateStructure()
+    {
+        if (_nodes.Count < 2)
+            throw new InvalidOperationException("Structure must have at least 2 nodes.");
+        
+        if (_elements.Count < 1)
+            throw new InvalidOperationException("Structure must have at least 1 element.");
+
+        // Check that all element nodes exist
+        foreach (var element in _elements)
+        {
+            if (!_nodeIndexMap.ContainsKey(element.StartNodeId))
+                throw new InvalidOperationException($"Element {element.Id} references non-existent start node {element.StartNodeId}.");
+            if (!_nodeIndexMap.ContainsKey(element.EndNodeId))
+                throw new InvalidOperationException($"Element {element.Id} references non-existent end node {element.EndNodeId}.");
+        }
+
+        // Check for adequate supports
+        int totalConstraints = _nodes.Sum(n => 
+            (n.ConstraintX ? 1 : 0) + (n.ConstraintY ? 1 : 0) + (n.ConstraintZ ? 1 : 0));
+        
+        if (totalConstraints < 6)
+            throw new InvalidOperationException("Structure may be unstable. At least 6 constraints are required for 3D stability.");
+    }
+
+    /// <summary>
+    /// Gets a node by its ID.
+    /// </summary>
+    private Node GetNodeById(int id)
+    {
+        if (!_nodeIndexMap.TryGetValue(id, out int index))
+            throw new InvalidOperationException($"Node with ID {id} not found.");
+        return _nodes[index];
+    }
+}
+
+/// <summary>
+/// Contains the results of a structural analysis.
+/// </summary>
+public class AnalysisResult
+{
+    public List<Node> Nodes { get; init; } = new();
+    public List<Element> Elements { get; init; } = new();
+    public bool EquilibriumSatisfied { get; init; }
+    public double MaxDisplacement { get; init; }
+    public double MaxAxialForce { get; init; }
+    public double MaxStress { get; init; }
+    
+    /// <summary>
+    /// Name of the load case used for this analysis
+    /// </summary>
+    public string LoadCaseName { get; init; } = "Default";
+    
+    /// <summary>
+    /// Total applied load magnitude (sum of all nodal forces)
+    /// </summary>
+    public double TotalAppliedLoad => Nodes.Sum(n => n.AppliedForce.Magnitude);
+    
+    /// <summary>
+    /// Total reaction force magnitude (sum of all reaction forces)
+    /// </summary>
+    public double TotalReactionForce => Nodes.Sum(n => n.ReactionForce.Magnitude);
+
+    public override string ToString()
+    {
+        return $"Analysis Result ({LoadCaseName}):\n" +
+               $"  Equilibrium: {(EquilibriumSatisfied ? "✓ Satisfied" : "✗ NOT Satisfied")}\n" +
+               $"  Max Displacement: {MaxDisplacement:E4} m\n" +
+               $"  Max Axial Force: {MaxAxialForce:E2} N\n" +
+               $"  Max Stress: {MaxStress:E2} Pa\n" +
+               $"  Total Applied Load: {TotalAppliedLoad:F2} N\n" +
+               $"  Total Reaction Force: {TotalReactionForce:F2} N";
     }
 }

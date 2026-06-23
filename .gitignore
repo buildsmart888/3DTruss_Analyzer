@@ -1,41 +1,5 @@
 ```
 # Build artifacts
-*.dll
-*.exe
-*.pdb
-*.userprefs
-*.suo
-*.user
-bin/
-obj/
-Debug/
-Release/
-x64/
-x86/
-
-# Dependencies
-packages/
-node_modules/
-.nuget/
-.nuget.packages/
-
-# Logs and temp files
-*.log
-*.tmp
-*.temp
-
-# Environment
-.env
-.env.local
-*.env.*
-
-# Editors
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS generated files
-.DS_Store
-Thumbs.db
+*.sln
+packages-microsoft-prod.deb
 ```

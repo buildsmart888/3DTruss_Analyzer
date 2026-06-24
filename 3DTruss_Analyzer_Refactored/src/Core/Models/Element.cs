@@ -41,6 +41,11 @@ public class Element
 
     public Element(int id, int startNodeId, int endNodeId, double area, Material material)
     {
+        if (area <= 0)
+            throw new ArgumentOutOfRangeException(nameof(area), "Element area must be positive.");
+        if (material.YoungsModulus <= 0)
+            throw new ArgumentOutOfRangeException(nameof(material), "Material Young's modulus must be positive.");
+
         Id = id;
         StartNodeId = startNodeId;
         EndNodeId = endNodeId;

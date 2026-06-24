@@ -188,14 +188,14 @@ namespace TrussAnalyzer.Core.Models
                 double factor = loadCaseEntry.Value;
 
                 if (!allLoadCases.ContainsKey(caseId))
-                    continue;
+                    throw new InvalidOperationException($"Load combination '{Name}' references missing load case '{caseId}'.");
 
                 LoadCase loadCase = allLoadCases[caseId];
 
                 foreach (var nodeForceEntry in loadCase.NodeForces)
                 {
                     int nodeId = nodeForceEntry.Key;
-                    ForceVector force = nodeForceEntry.Value.Multiply(factor);
+                    ForceVector force = nodeForceEntry.Value.Multiply(factor * loadCase.LoadFactor);
 
                     if (!combinedForces.ContainsKey(nodeId))
                     {

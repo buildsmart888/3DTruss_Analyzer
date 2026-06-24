@@ -37,6 +37,7 @@ public class TextbookBenchmarkTests
         node1.ConstraintZ = true;
         
         var node2 = new Node(2, new Point3D(2, 2, 0));
+        node2.ConstraintZ = true;
         node2.ApplyForce(0, -10000, 0); // 10 kN downward
         
         var node3 = new Node(3, new Point3D(4, 0, 0));
@@ -170,12 +171,16 @@ public class TextbookBenchmarkTests
         }
         
         // Fix left end (nodes 1 and 5)
+        foreach (var node in nodes)
+        {
+            node.ConstraintZ = true;
+        }
+
+        // Fix left end (nodes 1 and 5)
         nodes[0].ConstraintX = true;
         nodes[0].ConstraintY = true;
-        nodes[0].ConstraintZ = true;
         nodes[4].ConstraintX = true;
         nodes[4].ConstraintY = true;
-        nodes[4].ConstraintZ = true;
         
         // Apply load at free end (top right)
         nodes[7].ApplyForce(0, -5000, 0); // 5 kN downward
@@ -240,6 +245,8 @@ public class TextbookBenchmarkTests
         top.ConstraintZ = true;
         
         var bottom = new Node(2, new Point3D(0, 0, -length));
+        bottom.ConstraintX = true;
+        bottom.ConstraintY = true;
         
         var element = new Element(1, 1, 2, area, material);
         
@@ -247,7 +254,12 @@ public class TextbookBenchmarkTests
         solver.AddNode(bottom);
         solver.AddElement(element);
         
-        var result = solver.Analyze();
+        var result = solver.Analyze(new LoadCase
+        {
+            CaseId = "DL",
+            Name = "Self Weight",
+            IncludeSelfWeight = true
+        });
         
         Assert.True(result.EquilibriumSatisfied);
         

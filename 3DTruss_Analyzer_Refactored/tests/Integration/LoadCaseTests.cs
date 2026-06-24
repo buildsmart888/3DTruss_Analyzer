@@ -24,6 +24,10 @@ public class LoadCaseTests
         solver.GetNodes()[0].ConstraintX = true;
         solver.GetNodes()[0].ConstraintY = true;
         solver.GetNodes()[1].ConstraintY = true;
+        foreach (var node in solver.GetNodes())
+        {
+            node.ConstraintZ = true;
+        }
         
         // เพิ่มชิ้นส่วน
         var material = new Material("Steel", 200e9, 7850); // E=200 GPa, ρ=7850 kg/m³
@@ -96,6 +100,10 @@ public class LoadCaseTests
         solver.GetNodes()[0].ConstraintX = true;
         solver.GetNodes()[0].ConstraintY = true;
         solver.GetNodes()[1].ConstraintY = true;
+        foreach (var node in solver.GetNodes())
+        {
+            node.ConstraintZ = true;
+        }
         
         var material = new Material("Steel", 200e9, 7850);
         solver.AddElement(new Element(1, 1, 2, 0.005, material));

@@ -9,8 +9,7 @@ namespace TrussAnalyzer.UI.WinForms.Controls
 {
     public partial class ResultsPanel : UserControl
     {
-        private AnalysisResult _currentResult;
-        private StructureModel _currentModel;
+        private AnalysisResult? _currentResult;
 
         public ResultsPanel()
         {
@@ -23,9 +22,8 @@ namespace TrussAnalyzer.UI.WinForms.Controls
             this.AutoScroll = true;
         }
 
-        public void DisplayResults(StructureModel model, AnalysisResult result)
+        public void DisplayResults(AnalysisResult result)
         {
-            _currentModel = model;
             _currentResult = result;
 
             // Clear existing controls
@@ -49,7 +47,7 @@ namespace TrussAnalyzer.UI.WinForms.Controls
             // Summary
             var lblSummary = new Label
             {
-                Text = $"Nodes: {model.Nodes.Count} | Elements: {model.Elements.Count} | Constraints: {model.Constraints.Count}",
+                Text = $"Nodes: {result.Nodes.Count} | Elements: {result.Elements.Count} | Supports: {result.Nodes.Count(n => n.IsConstrained)}",
                 Font = new System.Drawing.Font("Arial", 10),
                 Location = new System.Drawing.Point(xOffset, yOffset),
                 AutoSize = true
@@ -60,13 +58,11 @@ namespace TrussAnalyzer.UI.WinForms.Controls
             // Equilibrium Check
             var lblEquilibrium = new Label
             {
-                Text = $"Equilibrium Check: FX={result.EquilibriumCheck.SumFX:E6}, FY={result.EquilibriumCheck.SumFY:E6}, FZ={result.EquilibriumCheck.SumFZ:E6}",
+                Text = $"Equilibrium Check: FX={result.Equilibrium.SumFX:E6}, FY={result.Equilibrium.SumFY:E6}, FZ={result.Equilibrium.SumFZ:E6}",
                 Font = new System.Drawing.Font("Arial", 10, System.Drawing.FontStyle.Italic),
                 Location = new System.Drawing.Point(xOffset, yOffset),
                 AutoSize = true,
-                ForeColor = Math.Abs(result.EquilibriumCheck.SumFX) < 1e-6 && 
-                           Math.Abs(result.EquilibriumCheck.SumFY) < 1e-6 && 
-                           Math.Abs(result.EquilibriumCheck.SumFZ) < 1e-6 ? 
+                ForeColor = result.EquilibriumSatisfied ? 
                            System.Drawing.Color.Green : System.Drawing.Color.Red
             };
             this.Controls.Add(lblEquilibrium);
@@ -84,20 +80,18 @@ namespace TrussAnalyzer.UI.WinForms.Controls
             this.Controls.Add(lblDisplacements);
             yOffset += 25;
 
-            foreach (var node in model.Nodes)
+            foreach (var node in result.Nodes)
             {
-                if (result.NodeDisplacements.TryGetValue(node.Id, out var disp))
+                var disp = node.Displacement;
+                var lblDisp = new Label
                 {
-                    var lblDisp = new Label
-                    {
-                        Text = $"Node {node.Id}: DX={disp.X:E6}, DY={disp.Y:E6}, DZ={disp.Z:E6}",
-                        Font = new System.Drawing.Font("Courier New", 9),
-                        Location = new System.Drawing.Point(xOffset + 20, yOffset),
-                        AutoSize = true
-                    };
-                    this.Controls.Add(lblDisp);
-                    yOffset += lineHeight;
-                }
+                    Text = $"Node {node.Id}: DX={disp.X:E6}, DY={disp.Y:E6}, DZ={disp.Z:E6}",
+                    Font = new System.Drawing.Font("Courier New", 9),
+                    Location = new System.Drawing.Point(xOffset + 20, yOffset),
+                    AutoSize = true
+                };
+                this.Controls.Add(lblDisp);
+                yOffset += lineHeight;
             }
 
             // Element Forces Section
@@ -112,25 +106,22 @@ namespace TrussAnalyzer.UI.WinForms.Controls
             this.Controls.Add(lblForces);
             yOffset += 25;
 
-            foreach (var elem in model.Elements)
+            foreach (var elem in result.Elements)
             {
-                if (result.ElementForces.TryGetValue(elem.Id, out var force))
-                {
-                    string state = force > 0 ? "Tension" : (force < 0 ? "Compression" : "Zero");
-                    System.Drawing.Color color = force > 0 ? System.Drawing.Color.Blue : 
-                                                  (force < 0 ? System.Drawing.Color.Red : System.Drawing.Color.Gray);
+                string state = elem.AxialForce > 0 ? "Tension" : (elem.AxialForce < 0 ? "Compression" : "Zero");
+                System.Drawing.Color color = elem.AxialForce > 0 ? System.Drawing.Color.Blue : 
+                                              (elem.AxialForce < 0 ? System.Drawing.Color.Red : System.Drawing.Color.Gray);
                     
-                    var lblForce = new Label
-                    {
-                        Text = $"Element {elem.Id}: {force:F2} N [{state}]",
-                        Font = new System.Drawing.Font("Courier New", 9),
-                        Location = new System.Drawing.Point(xOffset + 20, yOffset),
-                        AutoSize = true,
-                        ForeColor = color
-                    };
-                    this.Controls.Add(lblForce);
-                    yOffset += lineHeight;
-                }
+                var lblForce = new Label
+                {
+                    Text = $"Element {elem.Id}: {elem.AxialForce:F2} N [{state}]",
+                    Font = new System.Drawing.Font("Courier New", 9),
+                    Location = new System.Drawing.Point(xOffset + 20, yOffset),
+                    AutoSize = true,
+                    ForeColor = color
+                };
+                this.Controls.Add(lblForce);
+                yOffset += lineHeight;
             }
 
             // Reactions Section
@@ -145,20 +136,18 @@ namespace TrussAnalyzer.UI.WinForms.Controls
             this.Controls.Add(lblReactions);
             yOffset += 25;
 
-            foreach (var constraint in model.Constraints)
+            foreach (var node in result.Nodes.Where(n => n.IsConstrained))
             {
-                if (result.Reactions.TryGetValue(constraint.NodeId, out var reaction))
+                var reaction = node.ReactionForce;
+                var lblReaction = new Label
                 {
-                    var lblReaction = new Label
-                    {
-                        Text = $"Node {constraint.NodeId}: RX={reaction.X:F2}, RY={reaction.Y:F2}, RZ={reaction.Z:F2}",
-                        Font = new System.Drawing.Font("Courier New", 9),
-                        Location = new System.Drawing.Point(xOffset + 20, yOffset),
-                        AutoSize = true
-                    };
-                    this.Controls.Add(lblReaction);
-                    yOffset += lineHeight;
-                }
+                    Text = $"Node {node.Id}: RX={reaction.X:F2}, RY={reaction.Y:F2}, RZ={reaction.Z:F2}",
+                    Font = new System.Drawing.Font("Courier New", 9),
+                    Location = new System.Drawing.Point(xOffset + 20, yOffset),
+                    AutoSize = true
+                };
+                this.Controls.Add(lblReaction);
+                yOffset += lineHeight;
             }
 
             // Export Buttons
@@ -182,7 +171,7 @@ namespace TrussAnalyzer.UI.WinForms.Controls
             this.Controls.Add(btnExportCsv);
         }
 
-        private void BtnExportPdf_Click(object sender, EventArgs e)
+        private void BtnExportPdf_Click(object? sender, EventArgs e)
         {
             using (var saveDialog = new SaveFileDialog())
             {
@@ -194,7 +183,10 @@ namespace TrussAnalyzer.UI.WinForms.Controls
                 {
                     try
                     {
-                        var pdfGenerator = new PdfReportGenerator(_currentModel, _currentResult);
+                        if (_currentResult == null)
+                            throw new InvalidOperationException("No analysis result is available.");
+
+                        var pdfGenerator = new PdfReportGenerator(_currentResult);
                         pdfGenerator.SaveToFile(saveDialog.FileName);
                         MessageBox.Show($"PDF report saved successfully to:\n{saveDialog.FileName}", 
                                       "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -208,7 +200,7 @@ namespace TrussAnalyzer.UI.WinForms.Controls
             }
         }
 
-        private void BtnExportCsv_Click(object sender, EventArgs e)
+        private void BtnExportCsv_Click(object? sender, EventArgs e)
         {
             using (var saveDialog = new SaveFileDialog())
             {
@@ -220,8 +212,10 @@ namespace TrussAnalyzer.UI.WinForms.Controls
                 {
                     try
                     {
-                        var exporter = new StructureImporterExporter();
-                        exporter.ExportResultsToCsv(_currentResult, saveDialog.FileName);
+                        if (_currentResult == null)
+                            throw new InvalidOperationException("No analysis result is available.");
+
+                        StructureImporterExporter.ExportResultsToCsv(_currentResult, saveDialog.FileName);
                         MessageBox.Show($"CSV results saved successfully to:\n{saveDialog.FileName}", 
                                       "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
                     }

@@ -39,12 +39,12 @@ public static class StructureImporterExporter
                 e.Id,
                 StartNodeId = e.StartNodeId,
                 EndNodeId = e.EndNodeId,
-                Area = e.CrossSectionalArea,
+                Area = e.Area,
                 Material = new
                 {
                     Name = e.Material.Name,
                     YoungsModulus = e.Material.YoungsModulus,
-                    PoissonRatio = e.Material.PoissonRatio,
+                    PoissonsRatio = e.Material.PoissonsRatio,
                     Density = e.Material.Density
                 }
             })
@@ -67,30 +67,33 @@ public static class StructureImporterExporter
         var root = doc.RootElement;
         
         // Import nodes
-        if (root.TryGetProperty("Nodes", out var nodesElem))
+        if (TryGetPropertyCaseInsensitive(root, "Nodes", out var nodesElem))
         {
             foreach (var nodeElem in nodesElem.EnumerateArray())
             {
                 var node = new Node(
-                    nodeElem.GetProperty("Id").GetInt32(),
+                    GetPropertyCaseInsensitive(nodeElem, "Id").GetInt32(),
                     new Point3D(
-                        nodeElem.GetProperty("X").GetDouble(),
-                        nodeElem.GetProperty("Y").GetDouble(),
-                        nodeElem.GetProperty("Z").GetDouble()
+                        GetPropertyCaseInsensitive(nodeElem, "X").GetDouble(),
+                        GetPropertyCaseInsensitive(nodeElem, "Y").GetDouble(),
+                        GetPropertyCaseInsensitive(nodeElem, "Z").GetDouble()
                     )
                 );
                 
-                if (nodeElem.TryGetProperty("ConstraintX", out var cx))
+                if (TryGetPropertyCaseInsensitive(nodeElem, "ConstraintX", out var cx))
                     node.ConstraintX = cx.GetBoolean();
-                if (nodeElem.TryGetProperty("ConstraintY", out var cy))
+                if (TryGetPropertyCaseInsensitive(nodeElem, "ConstraintY", out var cy))
                     node.ConstraintY = cy.GetBoolean();
-                if (nodeElem.TryGetProperty("ConstraintZ", out var cz))
+                if (TryGetPropertyCaseInsensitive(nodeElem, "ConstraintZ", out var cz))
                     node.ConstraintZ = cz.GetBoolean();
                     
                 double fx = 0, fy = 0, fz = 0;
-                if (nodeElem.TryGetProperty("ForceX", out var fxElem)) fx = fxElem.GetDouble();
-                if (nodeElem.TryGetProperty("ForceY", out var fyElem)) fy = fyElem.GetDouble();
-                if (nodeElem.TryGetProperty("ForceZ", out var fzElem)) fz = fzElem.GetDouble();
+                if (TryGetPropertyCaseInsensitive(nodeElem, "ForceX", out var fxElem) ||
+                    TryGetPropertyCaseInsensitive(nodeElem, "LoadX", out fxElem)) fx = fxElem.GetDouble();
+                if (TryGetPropertyCaseInsensitive(nodeElem, "ForceY", out var fyElem) ||
+                    TryGetPropertyCaseInsensitive(nodeElem, "LoadY", out fyElem)) fy = fyElem.GetDouble();
+                if (TryGetPropertyCaseInsensitive(nodeElem, "ForceZ", out var fzElem) ||
+                    TryGetPropertyCaseInsensitive(nodeElem, "LoadZ", out fzElem)) fz = fzElem.GetDouble();
                 
                 node.ApplyForce(fx, fy, fz);
                 solver.AddNode(node);
@@ -98,22 +101,52 @@ public static class StructureImporterExporter
         }
         
         // Import elements
-        if (root.TryGetProperty("Elements", out var elemsElem))
+        Dictionary<int, Material> materials = new();
+        if (TryGetPropertyCaseInsensitive(root, "Materials", out var materialsElem))
+        {
+            foreach (var materialElem in materialsElem.EnumerateArray())
+            {
+                int id = GetPropertyCaseInsensitive(materialElem, "Id").GetInt32();
+                double poissonsRatio = TryGetPropertyCaseInsensitive(materialElem, "PoissonsRatio", out var pr)
+                    ? pr.GetDouble()
+                    : 0.3;
+                materials[id] = new Material(
+                    GetPropertyCaseInsensitive(materialElem, "Name").GetString() ?? "Unknown",
+                    GetPropertyCaseInsensitive(materialElem, "YoungsModulus").GetDouble(),
+                    poissonsRatio,
+                    GetPropertyCaseInsensitive(materialElem, "Density").GetDouble());
+            }
+        }
+
+        if (TryGetPropertyCaseInsensitive(root, "Elements", out var elemsElem))
         {
             foreach (var elemElem in elemsElem.EnumerateArray())
             {
-                var material = new Material(
-                    elemElem.GetProperty("Material").GetProperty("Name").GetString() ?? "Unknown",
-                    elemElem.GetProperty("Material").GetProperty("YoungsModulus").GetDouble(),
-                    elemElem.GetProperty("Material").GetProperty("PoissonRatio").GetDouble(),
-                    elemElem.GetProperty("Material").GetProperty("Density").GetDouble()
-                );
+                Material material;
+                if (TryGetPropertyCaseInsensitive(elemElem, "MaterialId", out var materialIdElem) &&
+                    materials.TryGetValue(materialIdElem.GetInt32(), out var referencedMaterial))
+                {
+                    material = referencedMaterial;
+                }
+                else
+                {
+                    var materialElem = GetPropertyCaseInsensitive(elemElem, "Material");
+                    double poissonsRatio = TryGetPropertyCaseInsensitive(materialElem, "PoissonsRatio", out var pr)
+                        ? pr.GetDouble()
+                        : 0.3;
+                    material = new Material(
+                        GetPropertyCaseInsensitive(materialElem, "Name").GetString() ?? "Unknown",
+                        GetPropertyCaseInsensitive(materialElem, "YoungsModulus").GetDouble(),
+                        poissonsRatio,
+                        GetPropertyCaseInsensitive(materialElem, "Density").GetDouble()
+                    );
+                }
                 
                 var element = new Element(
-                    elemElem.GetProperty("Id").GetInt32(),
-                    elemElem.GetProperty("StartNodeId").GetInt32(),
-                    elemElem.GetProperty("EndNodeId").GetInt32(),
-                    elemElem.GetProperty("Area").GetDouble(),
+                    GetPropertyCaseInsensitive(elemElem, "Id").GetInt32(),
+                    GetPropertyCaseInsensitive(elemElem, "StartNodeId").GetInt32(),
+                    GetPropertyCaseInsensitive(elemElem, "EndNodeId").GetInt32(),
+                    GetPropertyCaseInsensitive(elemElem, "Area").GetDouble(),
                     material
                 );
                 
@@ -122,6 +155,29 @@ public static class StructureImporterExporter
         }
         
         return solver;
+    }
+
+    private static bool TryGetPropertyCaseInsensitive(JsonElement element, string propertyName, out JsonElement value)
+    {
+        foreach (var property in element.EnumerateObject())
+        {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.Value;
+                return true;
+            }
+        }
+
+        value = default;
+        return false;
+    }
+
+    private static JsonElement GetPropertyCaseInsensitive(JsonElement element, string propertyName)
+    {
+        if (TryGetPropertyCaseInsensitive(element, propertyName, out var value))
+            return value;
+
+        throw new KeyNotFoundException($"Required JSON property '{propertyName}' was not found.");
     }
     
     /// <summary>
@@ -143,10 +199,11 @@ public static class StructureImporterExporter
         
         // Element results
         writer.WriteLine("=== ELEMENT RESULTS ===");
-        writer.WriteLine("ElementID,AxialForce_N,Stress_MPa,Strain,Length_m");
+        writer.WriteLine("ElementID,AxialForce_N,Stress_MPa,Strain,Length_m,Utilization,Status");
         foreach (var elem in result.Elements)
         {
-            writer.WriteLine($"{elem.Id},{elem.AxialForce:F2},{elem.Stress / 1e6:F3},{elem.Strain:F6},{elem.Length:F3}");
+            var check = result.SafetyChecks.ElementChecks.FirstOrDefault(c => c.ElementId == elem.Id);
+            writer.WriteLine($"{elem.Id},{elem.AxialForce:F2},{elem.Stress / 1e6:F3},{elem.Strain:F6},{elem.Length:F3},{check?.UtilizationRatio ?? 0:F3},{check?.Status ?? "N/A"}");
         }
         
         writer.WriteLine();
@@ -155,6 +212,7 @@ public static class StructureImporterExporter
         writer.WriteLine($"Max_Displacement_m,{result.MaxDisplacement:E4}");
         writer.WriteLine($"Max_AxialForce_N,{result.MaxAxialForce:E2}");
         writer.WriteLine($"Max_Stress_Pa,{result.MaxStress:E2}");
+        writer.WriteLine($"Max_Utilization,{result.SafetyChecks.MaxUtilizationRatio:F3}");
     }
     
     /// <summary>
@@ -179,6 +237,7 @@ public static class StructureImporterExporter
         writer.WriteLine($"  Maximum Displacement: {result.MaxDisplacement:E4} m  ({result.MaxDisplacement * 1000:F2} mm)");
         writer.WriteLine($"  Maximum Axial Force:  {result.MaxAxialForce:E2} N  ({result.MaxAxialForce / 1000:F2} kN)");
         writer.WriteLine($"  Maximum Stress:       {result.MaxStress:E2} Pa  ({result.MaxStress / 1e6:F2} MPa)");
+        writer.WriteLine($"  Maximum Utilization:  {result.SafetyChecks.MaxUtilizationRatio:F3}");
         writer.WriteLine();
         
         writer.WriteLine("┌─────────────────────────────────────────────────────────┐");
@@ -211,13 +270,13 @@ public static class StructureImporterExporter
         writer.WriteLine("┌─────────────────────────────────────────────────────────┐");
         writer.WriteLine("│ ELEMENT FORCES & STRESSES                               │");
         writer.WriteLine("└─────────────────────────────────────────────────────────┘");
-        writer.WriteLine($"  {"ID",-5} {"Force (N)",-12} {"Stress (MPa)",-14} {"Type",-10}");
-        writer.WriteLine("  " + new string('-', 41));
+        writer.WriteLine($"  {"ID",-5} {"Force (N)",-12} {"Stress (MPa)",-14} {"Util.",-8} {"Status",-10}");
+        writer.WriteLine("  " + new string('-', 56));
         
         foreach (var elem in result.Elements)
         {
-            string type = elem.AxialForce >= 0 ? "Tension" : "Compression";
-            writer.WriteLine($"  {elem.Id,-5} {elem.AxialForce,-12:F2} {(elem.Stress / 1e6),-14:F3} {type,-10}");
+            var check = result.SafetyChecks.ElementChecks.FirstOrDefault(c => c.ElementId == elem.Id);
+            writer.WriteLine($"  {elem.Id,-5} {elem.AxialForce,-12:F2} {(elem.Stress / 1e6),-14:F3} {check?.UtilizationRatio ?? 0,-8:F3} {check?.Status ?? "N/A",-10}");
         }
         writer.WriteLine();
         

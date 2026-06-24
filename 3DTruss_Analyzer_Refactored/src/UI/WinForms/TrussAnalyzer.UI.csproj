@@ -11,7 +11,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Core\TrussAnalyzer.Core.csproj" />
+    <ProjectReference Include="..\..\Core\TrussAnalyzer.Core.csproj" />
   </ItemGroup>
 
 </Project>

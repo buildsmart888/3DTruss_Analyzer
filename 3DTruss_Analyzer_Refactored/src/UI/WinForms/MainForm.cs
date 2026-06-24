@@ -1,8 +1,10 @@
 namespace TrussAnalyzer.UI.WinForms;
 
 using System;
+using System.Globalization;
 using System.Windows.Forms;
 using TrussAnalyzer.Core;
+using TrussAnalyzer.Core.IO;
 using TrussAnalyzer.Core.Models;
 
 /// <summary>
@@ -11,10 +13,12 @@ using TrussAnalyzer.Core.Models;
 /// </summary>
 public partial class MainForm : Form
 {
-    private readonly TrussSolver _solver = new();
+    private TrussSolver _solver = new();
     private DataGridView? dgvNodes;
     private DataGridView? dgvElements;
     private DataGridView? dgvResults;
+    private DataGridView? dgvForces;
+    private Panel? viewPanel;
     private TextBox? txtStatus;
     
     public MainForm()
@@ -39,20 +43,22 @@ public partial class MainForm : Form
         openProject.Click += (s, e) => OpenProject();
         var saveProject = new ToolStripMenuItem("Save Project");
         saveProject.Click += (s, e) => SaveProject();
-        var exportReport = new ToolStripMenuItem("Export Report (PDF/Excel)");
+        var exportReport = new ToolStripMenuItem("Export Report (Text/CSV/PDF)");
         exportReport.Click += (s, e) => ExportReport();
         var exit = new ToolStripMenuItem("Exit");
         exit.Click += (s, e) => Close();
         
-        fileMenu.DropDownItems.AddRange(new[] { newProject, openProject, saveProject, exportReport, new ToolStripSeparator(), exit });
+        fileMenu.DropDownItems.AddRange(new ToolStripItem[] { newProject, openProject, saveProject, exportReport, new ToolStripSeparator(), exit });
         
         var analyzeMenu = new ToolStripMenuItem("Analyze");
         var runAnalysis = new ToolStripMenuItem("Run Analysis");
         runAnalysis.Click += (s, e) => RunAnalysis();
         var checkEquilibrium = new ToolStripMenuItem("Check Equilibrium");
         checkEquilibrium.Click += (s, e) => CheckEquilibrium();
+        var validateModel = new ToolStripMenuItem("Validate Model");
+        validateModel.Click += (s, e) => ValidateCurrentModel(showDialog: true);
         
-        analyzeMenu.DropDownItems.AddRange(new[] { runAnalysis, checkEquilibrium });
+        analyzeMenu.DropDownItems.AddRange(new[] { runAnalysis, validateModel, checkEquilibrium });
         
         var helpMenu = new ToolStripMenuItem("Help");
         var about = new ToolStripMenuItem("About");
@@ -207,7 +213,7 @@ public partial class MainForm : Form
         
         // Element forces
         var grpForces = new GroupBox { Text = "Element Forces & Stresses", Dock = DockStyle.Fill };
-        var dgvForces = new DataGridView
+        dgvForces = new DataGridView
         {
             Dock = DockStyle.Fill,
             AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
@@ -219,6 +225,8 @@ public partial class MainForm : Form
         dgvForces.Columns.Add(new DataGridViewTextBoxColumn { Name = "Stress", HeaderText = "Stress (MPa)" });
         dgvForces.Columns.Add(new DataGridViewTextBoxColumn { Name = "Strain", HeaderText = "Strain" });
         dgvForces.Columns.Add(new DataGridViewTextBoxColumn { Name = "Length", HeaderText = "Length (m)" });
+        dgvForces.Columns.Add(new DataGridViewTextBoxColumn { Name = "Utilization", HeaderText = "Util." });
+        dgvForces.Columns.Add(new DataGridViewTextBoxColumn { Name = "Status", HeaderText = "Status" });
         
         grpForces.Controls.Add(dgvForces);
         splitContainer.Panel2.Controls.Add(grpForces);
@@ -228,14 +236,13 @@ public partial class MainForm : Form
     
     private void Create3DViewTab(TabPage tab)
     {
-        var lblPlaceholder = new Label
+        viewPanel = new Panel
         {
-            Text = "3D Visualization Module\n\nThis feature will display an interactive 3D model of the truss structure.\n\nPlanned features:\n- Rotate, pan, zoom\n- Color-coded stress/displacement visualization\n- Animation of deformation\n- Export to CAD formats",
             Dock = DockStyle.Fill,
-            TextAlign = System.Drawing.ContentAlignment.MiddleCenter,
-            Font = new System.Drawing.Font("Segoe UI", 12f)
+            BackColor = System.Drawing.Color.White
         };
-        tab.Controls.Add(lblPlaceholder);
+        viewPanel.Paint += DrawStructureView;
+        tab.Controls.Add(viewPanel);
     }
     
     private void LoadSampleStructure()
@@ -271,6 +278,7 @@ public partial class MainForm : Form
         }
         
         PopulateGrids();
+        viewPanel?.Invalidate();
         UpdateStatus("Sample tripod structure loaded. Click 'Run Analysis' to calculate results.");
     }
     
@@ -293,7 +301,7 @@ public partial class MainForm : Form
         {
             dgvElements.Rows.Add(
                 elem.Id, elem.StartNodeId, elem.EndNodeId,
-                elem.CrossSectionalArea, elem.Material.YoungsModulus, elem.Material.Density
+                elem.Area, elem.Material.YoungsModulus, elem.Material.Density
             );
         }
     }
@@ -302,12 +310,16 @@ public partial class MainForm : Form
     {
         try
         {
+            _solver = BuildSolverFromGrids();
+            if (!ValidateCurrentModel(showDialog: false))
+                return;
+
             UpdateStatus("Running analysis...");
             var result = _solver.Analyze();
             
             if (result.EquilibriumSatisfied)
             {
-                UpdateStatus("✓ Analysis completed successfully. Equilibrium satisfied.");
+                UpdateStatus($"Analysis completed. Equilibrium satisfied. Max utilization = {result.SafetyChecks.MaxUtilizationRatio:F3}.");
                 DisplayResults(result);
             }
             else
@@ -339,6 +351,25 @@ public partial class MainForm : Form
                 node.ReactionForce.Z.ToString("F2")
             );
         }
+
+        if (dgvForces != null)
+        {
+            dgvForces.Rows.Clear();
+            foreach (var elem in result.Elements)
+            {
+                var check = result.SafetyChecks.ElementChecks.FirstOrDefault(c => c.ElementId == elem.Id);
+                dgvForces.Rows.Add(
+                    elem.Id,
+                    elem.AxialForce.ToString("F2"),
+                    (elem.Stress / 1e6).ToString("F3"),
+                    elem.Strain.ToString("E4"),
+                    elem.Length.ToString("F3"),
+                    (check?.UtilizationRatio ?? 0).ToString("F3"),
+                    check?.Status ?? "N/A"
+                );
+            }
+        }
+        viewPanel?.Invalidate();
         
         // Switch to results tab
         var tabControl = this.Controls.OfType<TabControl>().FirstOrDefault();
@@ -363,9 +394,48 @@ public partial class MainForm : Form
             _solver.LastResult.EquilibriumSatisfied ? MessageBoxIcon.Information : MessageBoxIcon.Warning);
     }
     
-    private void NewProject() => _solver = new TrussSolver();
-    private void OpenProject() => MessageBox.Show("Open Project - To be implemented", "Info");
-    private void SaveProject() => MessageBox.Show("Save Project - To be implemented", "Info");
+    private void NewProject()
+    {
+        _solver = new TrussSolver();
+        dgvNodes?.Rows.Clear();
+        dgvElements?.Rows.Clear();
+        dgvResults?.Rows.Clear();
+        dgvForces?.Rows.Clear();
+        viewPanel?.Invalidate();
+        UpdateStatus("New empty project created.");
+    }
+    private void OpenProject()
+    {
+        using var dlg = new OpenFileDialog
+        {
+            Filter = "JSON Files|*.json",
+            Title = "Open Truss Model"
+        };
+
+        if (dlg.ShowDialog() == DialogResult.OK)
+        {
+            _solver = StructureImporterExporter.ImportFromJson(File.ReadAllText(dlg.FileName));
+            PopulateGrids();
+            UpdateStatus($"Loaded model from {dlg.FileName}");
+        }
+    }
+
+    private void SaveProject()
+    {
+        using var dlg = new SaveFileDialog
+        {
+            Filter = "JSON Files|*.json",
+            Title = "Save Truss Model",
+            FileName = "truss-model.json"
+        };
+
+        if (dlg.ShowDialog() == DialogResult.OK)
+        {
+            _solver = BuildSolverFromGrids();
+            File.WriteAllText(dlg.FileName, StructureImporterExporter.ExportToJson(_solver));
+            UpdateStatus($"Saved model to {dlg.FileName}");
+        }
+    }
     
     private void ExportReport()
     {
@@ -377,13 +447,25 @@ public partial class MainForm : Form
         
         var dlg = new SaveFileDialog
         {
-            Filter = "Text File|*.txt|CSV File|*.csv",
+            Filter = "Text File|*.txt|CSV File|*.csv|PDF File|*.pdf",
             Title = "Export Analysis Report"
         };
         
         if (dlg.ShowDialog() == DialogResult.OK)
         {
-            ExportToTextFile(dlg.FileName);
+            if (dlg.FilterIndex == 2)
+            {
+                StructureImporterExporter.ExportResultsToCsv(_solver.LastResult, dlg.FileName);
+            }
+            else if (dlg.FilterIndex == 3)
+            {
+                var pdf = new Core.Reporting.PdfReportGenerator(_solver.LastResult);
+                pdf.SaveToFile(dlg.FileName);
+            }
+            else
+            {
+                ExportToTextFile(dlg.FileName);
+            }
             MessageBox.Show($"Report exported to {dlg.FileName}", "Success");
         }
     }
@@ -401,6 +483,7 @@ public partial class MainForm : Form
         writer.WriteLine($"Max Displacement: {result.MaxDisplacement:E4} m");
         writer.WriteLine($"Max Axial Force: {result.MaxAxialForce:E2} N");
         writer.WriteLine($"Max Stress: {result.MaxStress:E2} Pa");
+        writer.WriteLine($"Max Utilization: {result.SafetyChecks.MaxUtilizationRatio:F3}");
         writer.WriteLine();
         
         writer.WriteLine("--- Node Results ---");
@@ -412,10 +495,11 @@ public partial class MainForm : Form
         writer.WriteLine();
         
         writer.WriteLine("--- Element Results ---");
-        writer.WriteLine("ID\tForce(N)\tStress(MPa)\tLength(m)");
+        writer.WriteLine("ID\tForce(N)\tStress(MPa)\tLength(m)\tUtil.\tStatus");
         foreach (var elem in result.Elements)
         {
-            writer.WriteLine($"{elem.Id}\t{elem.AxialForce:F2}\t{elem.Stress/1e6:F3}\t{elem.Length:F3}");
+            var check = result.SafetyChecks.ElementChecks.FirstOrDefault(c => c.ElementId == elem.Id);
+            writer.WriteLine($"{elem.Id}\t{elem.AxialForce:F2}\t{elem.Stress/1e6:F3}\t{elem.Length:F3}\t{check?.UtilizationRatio ?? 0:F3}\t{check?.Status ?? "N/A"}");
         }
     }
     
@@ -439,14 +523,184 @@ public partial class MainForm : Form
     
     private void AddNode()
     {
-        // Placeholder - would open dialog to add node
-        MessageBox.Show("Add Node dialog - To be implemented", "Info");
+        if (dgvNodes == null) return;
+        int nextId = GetNextGridId(dgvNodes);
+        dgvNodes.Rows.Add(nextId, 0, 0, 0, false, false, false, 0, 0, 0);
+        UpdateStatus($"Added node {nextId}. Edit coordinates and constraints in the grid.");
     }
     
     private void AddElement()
     {
-        // Placeholder - would open dialog to add element
-        MessageBox.Show("Add Element dialog - To be implemented", "Info");
+        if (dgvElements == null || dgvNodes == null) return;
+        int nextId = GetNextGridId(dgvElements);
+        var nodeRows = dgvNodes.Rows.Cast<DataGridViewRow>().Where(r => !r.IsNewRow && !IsEmptyRow(r)).ToList();
+        int startNode = nodeRows.Count > 0 ? Convert.ToInt32(nodeRows[0].Cells["Id"].Value, CultureInfo.InvariantCulture) : 1;
+        int endNode = nodeRows.Count > 1 ? Convert.ToInt32(nodeRows[1].Cells["Id"].Value, CultureInfo.InvariantCulture) : startNode;
+        dgvElements.Rows.Add(nextId, startNode, endNode, 0.001, 200e9, 7850);
+        UpdateStatus($"Added element {nextId}. Edit connectivity and properties in the grid.");
+    }
+
+    private bool ValidateCurrentModel(bool showDialog)
+    {
+        try
+        {
+            _solver = BuildSolverFromGrids();
+            var messages = _solver.ValidateModel();
+            var errors = messages.Where(m => m.Severity == "Error").ToList();
+            string message = messages.Count == 0
+                ? "Model validation passed."
+                : string.Join(Environment.NewLine, messages.Select(m => $"{m.Severity}: {m.Message}"));
+
+            UpdateStatus(message);
+            if (showDialog || errors.Count > 0)
+            {
+                MessageBox.Show(message, "Model Validation", MessageBoxButtons.OK,
+                    errors.Count > 0 ? MessageBoxIcon.Error : MessageBoxIcon.Information);
+            }
+
+            return errors.Count == 0;
+        }
+        catch (Exception ex)
+        {
+            UpdateStatus($"Validation failed: {ex.Message}");
+            MessageBox.Show(ex.Message, "Model Validation", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return false;
+        }
+    }
+
+    private TrussSolver BuildSolverFromGrids()
+    {
+        var solver = new TrussSolver();
+        if (dgvNodes == null || dgvElements == null)
+            return solver;
+
+        foreach (DataGridViewRow row in dgvNodes.Rows)
+        {
+            if (row.IsNewRow || IsEmptyRow(row)) continue;
+
+            var node = new Node(
+                ReadInt(row, "Id"),
+                new Point3D(ReadDouble(row, "X"), ReadDouble(row, "Y"), ReadDouble(row, "Z")))
+            {
+                ConstraintX = ReadBool(row, "CX"),
+                ConstraintY = ReadBool(row, "CY"),
+                ConstraintZ = ReadBool(row, "CZ")
+            };
+            node.ApplyForce(ReadDouble(row, "FX"), ReadDouble(row, "FY"), ReadDouble(row, "FZ"));
+            solver.AddNode(node);
+        }
+
+        foreach (DataGridViewRow row in dgvElements.Rows)
+        {
+            if (row.IsNewRow || IsEmptyRow(row)) continue;
+
+            var material = new Material("Grid Material", ReadDouble(row, "EModulus"), 0.3, ReadDouble(row, "Density"), 250e6);
+            solver.AddElement(new Element(
+                ReadInt(row, "Id"),
+                ReadInt(row, "StartNode"),
+                ReadInt(row, "EndNode"),
+                ReadDouble(row, "Area"),
+                material));
+        }
+
+        return solver;
+    }
+
+    private static int GetNextGridId(DataGridView grid)
+    {
+        var ids = grid.Rows.Cast<DataGridViewRow>()
+            .Where(r => !r.IsNewRow && r.Cells["Id"].Value != null)
+            .Select(r => int.TryParse(Convert.ToString(r.Cells["Id"].Value, CultureInfo.InvariantCulture), out int id) ? id : 0);
+        return ids.DefaultIfEmpty(0).Max() + 1;
+    }
+
+    private static bool IsEmptyRow(DataGridViewRow row)
+    {
+        return row.Cells.Cast<DataGridViewCell>().All(c => c.Value == null || string.IsNullOrWhiteSpace(Convert.ToString(c.Value, CultureInfo.InvariantCulture)));
+    }
+
+    private static int ReadInt(DataGridViewRow row, string columnName)
+    {
+        return int.Parse(Convert.ToString(row.Cells[columnName].Value, CultureInfo.InvariantCulture) ?? "0", CultureInfo.InvariantCulture);
+    }
+
+    private static double ReadDouble(DataGridViewRow row, string columnName)
+    {
+        return double.Parse(Convert.ToString(row.Cells[columnName].Value, CultureInfo.InvariantCulture) ?? "0", CultureInfo.InvariantCulture);
+    }
+
+    private static bool ReadBool(DataGridViewRow row, string columnName)
+    {
+        object? value = row.Cells[columnName].Value;
+        return value is bool b ? b : bool.TryParse(Convert.ToString(value, CultureInfo.InvariantCulture), out bool parsed) && parsed;
+    }
+
+    private void DrawStructureView(object? sender, PaintEventArgs e)
+    {
+        e.Graphics.Clear(System.Drawing.Color.White);
+        var nodes = _solver.GetNodes();
+        var elements = _solver.GetElements();
+        if (nodes.Count == 0 || elements.Count == 0 || viewPanel == null)
+        {
+            e.Graphics.DrawString("No model to display", this.Font, System.Drawing.Brushes.Gray, 20, 20);
+            return;
+        }
+
+        var points = nodes.ToDictionary(n => n.Id, n => ProjectPoint(n.Position, viewPanel.ClientSize));
+        foreach (var element in elements)
+        {
+            if (!points.TryGetValue(element.StartNodeId, out var p1) || !points.TryGetValue(element.EndNodeId, out var p2))
+                continue;
+
+            var color = element.AxialForce > 1e-6 ? System.Drawing.Color.RoyalBlue :
+                element.AxialForce < -1e-6 ? System.Drawing.Color.Firebrick : System.Drawing.Color.DimGray;
+            using var pen = new System.Drawing.Pen(color, 2);
+            e.Graphics.DrawLine(pen, p1, p2);
+            var mid = new System.Drawing.PointF((p1.X + p2.X) / 2, (p1.Y + p2.Y) / 2);
+            e.Graphics.DrawString(element.Id.ToString(CultureInfo.InvariantCulture), this.Font, System.Drawing.Brushes.Black, mid);
+        }
+
+        foreach (var node in nodes)
+        {
+            var p = points[node.Id];
+            var brush = node.IsConstrained ? System.Drawing.Brushes.DarkGreen : System.Drawing.Brushes.Black;
+            e.Graphics.FillEllipse(brush, p.X - 4, p.Y - 4, 8, 8);
+            e.Graphics.DrawString(node.Id.ToString(CultureInfo.InvariantCulture), this.Font, System.Drawing.Brushes.Black, p.X + 6, p.Y + 6);
+
+            if (node.AppliedForce.Magnitude > 1e-6)
+            {
+                var end = new System.Drawing.PointF(
+                    p.X + (float)(node.AppliedForce.X / node.AppliedForce.Magnitude * 24),
+                    p.Y - (float)(node.AppliedForce.Z / node.AppliedForce.Magnitude * 24) + (float)(node.AppliedForce.Y / node.AppliedForce.Magnitude * 12));
+                using var loadPen = new System.Drawing.Pen(System.Drawing.Color.DarkOrange, 2);
+                e.Graphics.DrawLine(loadPen, p, end);
+            }
+        }
+    }
+
+    private System.Drawing.PointF ProjectPoint(Point3D point, System.Drawing.Size size)
+    {
+        var nodes = _solver.GetNodes();
+        double minX = nodes.Min(n => n.Position.X);
+        double maxX = nodes.Max(n => n.Position.X);
+        double minY = nodes.Min(n => n.Position.Y);
+        double maxY = nodes.Max(n => n.Position.Y);
+        double minZ = nodes.Min(n => n.Position.Z);
+        double maxZ = nodes.Max(n => n.Position.Z);
+        double span = Math.Max(Math.Max(maxX - minX, maxY - minY), maxZ - minZ);
+        if (span < 1e-9) span = 1;
+
+        double cx = (minX + maxX) / 2;
+        double cy = (minY + maxY) / 2;
+        double cz = (minZ + maxZ) / 2;
+        double scale = Math.Min(size.Width, size.Height) * 0.65 / span;
+
+        double x = (point.X - cx) - 0.45 * (point.Y - cy);
+        double y = -(point.Z - cz) + 0.25 * (point.Y - cy);
+
+        return new System.Drawing.PointF(
+            (float)(size.Width / 2.0 + x * scale),
+            (float)(size.Height / 2.0 + y * scale));
     }
     
     private void UpdateStatus(string message)

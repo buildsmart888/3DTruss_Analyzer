@@ -7,6 +7,14 @@ namespace TrussAnalyzer.Core.Utilities;
 public static class Matrix
 {
     /// <summary>
+    /// Chooses the available linear solver path. Dense Gaussian elimination is currently used for all sizes.
+    /// </summary>
+    public static double[] SolveAuto(double[,] A, double[] b)
+    {
+        return Solve(A, b);
+    }
+
+    /// <summary>
     /// Solves the linear system Ax = b using Gaussian elimination with partial pivoting.
     /// Returns: solution vector x
     /// </summary>

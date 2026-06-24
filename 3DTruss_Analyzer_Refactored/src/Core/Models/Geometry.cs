@@ -99,6 +99,11 @@ public readonly struct Vector3D
     public Vector3D Add(Vector3D other) => new(X + other.X, Y + other.Y, Z + other.Z);
 
     /// <summary>
+    /// Vector subtraction.
+    /// </summary>
+    public Vector3D Subtract(Vector3D other) => new(X - other.X, Y - other.Y, Z - other.Z);
+
+    /// <summary>
     /// Scalar multiplication.
     /// </summary>
     public Vector3D Scale(double scalar) => new(X * scalar, Y * scalar, Z * scalar);

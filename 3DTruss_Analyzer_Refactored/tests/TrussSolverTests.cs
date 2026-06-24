@@ -39,6 +39,8 @@ public class TrussSolverTests
         node1.ConstraintZ = true;
         
         var node2 = new Node(2, new Point3D(length, 0, 0));
+        node2.ConstraintY = true;
+        node2.ConstraintZ = true;
         node2.ApplyForce(force, 0, 0);
 
         // Create element
@@ -91,6 +93,8 @@ public class TrussSolverTests
         node1.ConstraintZ = true;
         
         var node2 = new Node(2, new Point3D(0, 0, -length)); // Bottom (free)
+        node2.ConstraintX = true;
+        node2.ConstraintY = true;
 
         // Create element
         var element = new Element(1, 1, 2, area, material);
@@ -100,7 +104,12 @@ public class TrussSolverTests
         solver.AddElement(element);
 
         // Act
-        var result = solver.Analyze();
+        var result = solver.Analyze(new LoadCase
+        {
+            CaseId = "DL",
+            Name = "Self Weight",
+            IncludeSelfWeight = true
+        });
 
         // Assert
         Assert.True(result.EquilibriumSatisfied, "Equilibrium should be satisfied");

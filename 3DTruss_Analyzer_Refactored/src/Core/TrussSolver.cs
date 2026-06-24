@@ -14,10 +14,12 @@ public class TrussSolver
     private readonly Dictionary<int, int> _nodeIndexMap = new();
     
     /// <summary>Global stiffness matrix</summary>
-    private double[,] _globalStiffnessMatrix = Array.Empty<double[]>();
+    private double[,] _globalStiffnessMatrix = new double[0, 0];
+    private double[,] _unconstrainedStiffnessMatrix = new double[0, 0];
     
     /// <summary>Global force vector (units: N)</summary>
     private double[] _forceVector = Array.Empty<double>();
+    private double[] _unconstrainedForceVector = Array.Empty<double>();
     
     /// <summary>Displacement solution vector (units: m)</summary>
     private double[] _displacementVector = Array.Empty<double>();
@@ -38,6 +40,8 @@ public class TrussSolver
     /// <summary>Add an element to the structure</summary>
     public void AddElement(Element element)
     {
+        if (_elements.Any(e => e.Id == element.Id))
+            throw new InvalidOperationException($"Element with ID {element.Id} already exists.");
         _elements.Add(element);
     }
 
@@ -46,6 +50,60 @@ public class TrussSolver
 
     /// <summary>Get all elements</summary>
     public IReadOnlyList<Element> GetElements() => _elements.AsReadOnly();
+
+    /// <summary>
+    /// Returns user-facing validation messages before analysis.
+    /// </summary>
+    public List<ModelValidationMessage> ValidateModel()
+    {
+        var messages = new List<ModelValidationMessage>();
+
+        if (_nodes.Count == 0)
+            messages.Add(new ModelValidationMessage { Severity = "Error", Message = "No nodes have been defined." });
+        if (_elements.Count == 0)
+            messages.Add(new ModelValidationMessage { Severity = "Error", Message = "No elements have been defined." });
+        if (!_nodes.Any(n => n.IsConstrained))
+            messages.Add(new ModelValidationMessage { Severity = "Error", Message = "No supports are defined." });
+
+        int dof = _nodes.Count * 3;
+        if (dof > 300)
+        {
+            messages.Add(new ModelValidationMessage
+            {
+                Severity = "Warning",
+                Message = $"Model has {dof} DOF. The current dense matrix solver may be slow for large models."
+            });
+        }
+
+        foreach (var element in _elements)
+        {
+            if (!_nodeIndexMap.ContainsKey(element.StartNodeId))
+                messages.Add(new ModelValidationMessage { Severity = "Error", Message = $"Element {element.Id} references missing start node {element.StartNodeId}." });
+            if (!_nodeIndexMap.ContainsKey(element.EndNodeId))
+                messages.Add(new ModelValidationMessage { Severity = "Error", Message = $"Element {element.Id} references missing end node {element.EndNodeId}." });
+            if (element.StartNodeId == element.EndNodeId)
+                messages.Add(new ModelValidationMessage { Severity = "Error", Message = $"Element {element.Id} connects a node to itself." });
+        }
+
+        foreach (var node in _nodes.Where(n => !n.ConstraintZ && Math.Abs(n.Position.Z) < 1e-12))
+        {
+            bool connectedOnlyToPlanarElements = _elements
+                .Where(e => e.StartNodeId == node.Id || e.EndNodeId == node.Id)
+                .Where(e => _nodeIndexMap.ContainsKey(e.StartNodeId) && _nodeIndexMap.ContainsKey(e.EndNodeId))
+                .All(e => GetNodeById(e.StartNodeId).Position.Z == 0 && GetNodeById(e.EndNodeId).Position.Z == 0);
+
+            if (connectedOnlyToPlanarElements)
+            {
+                messages.Add(new ModelValidationMessage
+                {
+                    Severity = "Warning",
+                    Message = $"Node {node.Id} appears to be in a 2D model but Z is unconstrained."
+                });
+            }
+        }
+
+        return messages;
+    }
 
     /// <summary>
     /// Performs the complete structural analysis for a single load case.
@@ -62,28 +120,8 @@ public class TrussSolver
         _globalStiffnessMatrix = Matrix.Create(numDOF, numDOF);
         _forceVector = new double[numDOF];
 
-        // Reset all node forces before applying new loads
-        foreach (var node in _nodes)
-        {
-            node.ResetForces();
-        }
-
-        // Step 1: Update element geometry and apply self-weight if needed
-        foreach (var element in _elements)
-        {
-            var startNode = GetNodeById(element.StartNodeId);
-            var endNode = GetNodeById(element.EndNodeId);
-            
-            element.UpdateGeometry(startNode.Position, endNode.Position);
-            
-            // Apply self-weight to nodes (correctly: half to each node)
-            // Only if no specific load case or if load case includes self-weight
-            if (loadCase == null || loadCase.IncludeSelfWeight)
-            {
-                startNode.AddForce(0, 0, -element.SelfWeightPerNode);
-                endNode.AddForce(0, 0, -element.SelfWeightPerNode);
-            }
-        }
+        // Step 1: Update element geometry
+        UpdateElementGeometry();
 
         // Step 2: Assemble global stiffness matrix
         AssembleGlobalStiffnessMatrix(numDOF);
@@ -91,11 +129,14 @@ public class TrussSolver
         // Step 3: Build force vector from applied loads
         BuildForceVector(numDOF, loadCase);
 
+        _unconstrainedStiffnessMatrix = (double[,])_globalStiffnessMatrix.Clone();
+        _unconstrainedForceVector = (double[])_forceVector.Clone();
+
         // Step 4: Apply boundary conditions
         ApplyBoundaryConditions(numDOF);
 
         // Step 5: Solve for displacements
-        _displacementVector = Matrix.Solve(_globalStiffnessMatrix, _forceVector);
+        _displacementVector = Matrix.SolveAuto(_globalStiffnessMatrix, _forceVector);
 
         // Step 6: Extract displacements and calculate reactions
         ExtractResults(numDOF);
@@ -104,18 +145,10 @@ public class TrussSolver
         CalculateElementForces();
 
         // Step 8: Verify equilibrium
-        bool equilibriumOK = VerifyEquilibrium();
+        var equilibrium = CalculateEquilibrium();
+        bool equilibriumOK = equilibrium.IsSatisfied;
 
-        LastResult = new AnalysisResult
-        {
-            Nodes = _nodes.ToList(),
-            Elements = _elements.ToList(),
-            EquilibriumSatisfied = equilibriumOK,
-            MaxDisplacement = _nodes.Max(n => n.Displacement.Magnitude),
-            MaxAxialForce = _elements.Max(e => Math.Abs(e.AxialForce)),
-            MaxStress = _elements.Max(e => Math.Abs(e.Stress)),
-            LoadCaseName = loadCase?.Name ?? "Default"
-        };
+        LastResult = CreateResultSnapshot(loadCase?.Name ?? "Default", equilibriumOK, equilibrium);
 
         return LastResult;
     }
@@ -147,8 +180,7 @@ public class TrussSolver
         
         foreach (var combination in combinations)
         {
-            // Calculate combined forces
-            var combinedForces = combination.CalculateCombinedForces(allLoadCases);
+            var combinedForces = CalculateCombinationForces(combination, allLoadCases);
             
             // Create a temporary load case for this combination
             var tempLoadCase = new LoadCase
@@ -157,7 +189,7 @@ public class TrussSolver
                 Name = combination.Name,
                 Type = LoadCaseType.Static,
                 NodeForces = combinedForces,
-                IncludeSelfWeight = false // Self-weight already included in individual load cases
+                IncludeSelfWeight = false
             };
             
             var result = Analyze(tempLoadCase);
@@ -219,22 +251,40 @@ public class TrussSolver
     /// </summary>
     private void BuildForceVector(int numDOF, LoadCase? loadCase = null)
     {
-        // Reset all forces first
-        foreach (var node in _nodes)
-        {
-            node.ResetForces();
-        }
+        var nodalForces = new Dictionary<int, ForceVector>();
 
-        // If a specific load case is provided, apply forces from that load case
         if (loadCase != null)
         {
             foreach (var nodeForceEntry in loadCase.NodeForces)
             {
-                int nodeId = nodeForceEntry.Key;
-                var force = nodeForceEntry.Value;
-                
-                var node = GetNodeById(nodeId);
-                node.AddForce(force.Fx, force.Fy, force.Fz);
+                AddToForceDictionary(nodalForces, nodeForceEntry.Key, nodeForceEntry.Value.Multiply(loadCase.LoadFactor));
+            }
+        }
+        else
+        {
+            foreach (var node in _nodes)
+            {
+                AddToForceDictionary(
+                    nodalForces,
+                    node.Id,
+                    new ForceVector(node.AppliedForce.X, node.AppliedForce.Y, node.AppliedForce.Z));
+            }
+        }
+
+        if (loadCase?.IncludeSelfWeight == true)
+        {
+            AddSelfWeightForces(nodalForces, loadCase.LoadFactor);
+        }
+
+        foreach (var node in _nodes)
+        {
+            if (nodalForces.TryGetValue(node.Id, out var force))
+            {
+                node.ApplyForce(force.Fx, force.Fy, force.Fz);
+            }
+            else
+            {
+                node.ResetForces();
             }
         }
 
@@ -317,15 +367,15 @@ public class TrussSolver
             
             if (node.ConstraintX)
             {
-                rx = CalculateReaction(idx) - node.AppliedForce.X;
+                rx = CalculateReaction(idx);
             }
             if (node.ConstraintY)
             {
-                ry = CalculateReaction(idx + 1) - node.AppliedForce.Y;
+                ry = CalculateReaction(idx + 1);
             }
             if (node.ConstraintZ)
             {
-                rz = CalculateReaction(idx + 2) - node.AppliedForce.Z;
+                rz = CalculateReaction(idx + 2);
             }
 
             node.SetReactionForce(rx, ry, rz);
@@ -338,14 +388,14 @@ public class TrussSolver
     private double CalculateReaction(int dofIndex)
     {
         double reaction = 0;
-        int numDOF = _globalStiffnessMatrix.GetLength(0);
+        int numDOF = _unconstrainedStiffnessMatrix.GetLength(0);
         
         for (int j = 0; j < numDOF; j++)
         {
-            reaction += _globalStiffnessMatrix[dofIndex, j] * _displacementVector[j];
+            reaction += _unconstrainedStiffnessMatrix[dofIndex, j] * _displacementVector[j];
         }
         
-        return reaction;
+        return reaction - _unconstrainedForceVector[dofIndex];
     }
 
     /// <summary>
@@ -366,23 +416,21 @@ public class TrussSolver
     /// Verifies that the structure is in equilibrium.
     /// Sum of (Applied Forces + Reactions) should equal zero.
     /// </summary>
-    private bool VerifyEquilibrium()
+    private EquilibriumCheck CalculateEquilibrium()
     {
         double sumFx = 0, sumFy = 0, sumFz = 0;
+        double loadScale = 0;
         
         foreach (var node in _nodes)
         {
             sumFx += node.AppliedForce.X + node.ReactionForce.X;
             sumFy += node.AppliedForce.Y + node.ReactionForce.Y;
             sumFz += node.AppliedForce.Z + node.ReactionForce.Z;
+            loadScale += node.AppliedForce.Magnitude + node.ReactionForce.Magnitude;
         }
 
-        double tolerance = 1e-6;
-        bool ok = Math.Abs(sumFx) < tolerance && 
-                  Math.Abs(sumFy) < tolerance && 
-                  Math.Abs(sumFz) < tolerance;
-
-        return ok;
+        double tolerance = Math.Max(1e-6, loadScale * 1e-9);
+        return new EquilibriumCheck(sumFx, sumFy, sumFz, tolerance);
     }
 
     /// <summary>
@@ -405,12 +453,9 @@ public class TrussSolver
                 throw new InvalidOperationException($"Element {element.Id} references non-existent end node {element.EndNodeId}.");
         }
 
-        // Check for adequate supports
-        int totalConstraints = _nodes.Sum(n => 
-            (n.ConstraintX ? 1 : 0) + (n.ConstraintY ? 1 : 0) + (n.ConstraintZ ? 1 : 0));
-        
-        if (totalConstraints < 6)
-            throw new InvalidOperationException("Structure may be unstable. At least 6 constraints are required for 3D stability.");
+        bool hasAnySupport = _nodes.Any(n => n.IsConstrained);
+        if (!hasAnySupport)
+            throw new InvalidOperationException("Structure has no supports. At least one constrained degree of freedom is required.");
     }
 
     /// <summary>
@@ -422,6 +467,136 @@ public class TrussSolver
             throw new InvalidOperationException($"Node with ID {id} not found.");
         return _nodes[index];
     }
+
+    private Dictionary<int, ForceVector> CalculateCombinationForces(
+        LoadCombination combination,
+        Dictionary<string, LoadCase> allLoadCases)
+    {
+        UpdateElementGeometry();
+        var combinedForces = new Dictionary<int, ForceVector>();
+
+        foreach (var loadCaseEntry in combination.LoadCases)
+        {
+            string caseId = loadCaseEntry.Key;
+            double factor = loadCaseEntry.Value;
+
+            if (!allLoadCases.TryGetValue(caseId, out var loadCase))
+                throw new InvalidOperationException($"Load combination '{combination.Name}' references missing load case '{caseId}'.");
+
+            double totalFactor = factor * loadCase.LoadFactor;
+
+            foreach (var nodeForceEntry in loadCase.NodeForces)
+            {
+                AddToForceDictionary(combinedForces, nodeForceEntry.Key, nodeForceEntry.Value.Multiply(totalFactor));
+            }
+
+            if (loadCase.IncludeSelfWeight)
+            {
+                AddSelfWeightForces(combinedForces, totalFactor);
+            }
+        }
+
+        return combinedForces;
+    }
+
+    private void UpdateElementGeometry()
+    {
+        foreach (var element in _elements)
+        {
+            var startNode = GetNodeById(element.StartNodeId);
+            var endNode = GetNodeById(element.EndNodeId);
+            element.UpdateGeometry(startNode.Position, endNode.Position);
+        }
+    }
+
+    private void AddSelfWeightForces(Dictionary<int, ForceVector> nodalForces, double factor)
+    {
+        foreach (var element in _elements)
+        {
+            var selfWeight = new ForceVector(0, 0, -element.SelfWeightPerNode * factor);
+            AddToForceDictionary(nodalForces, element.StartNodeId, selfWeight);
+            AddToForceDictionary(nodalForces, element.EndNodeId, selfWeight);
+        }
+    }
+
+    private static void AddToForceDictionary(Dictionary<int, ForceVector> forces, int nodeId, ForceVector force)
+    {
+        if (forces.TryGetValue(nodeId, out var current))
+        {
+            forces[nodeId] = current + force;
+        }
+        else
+        {
+            forces[nodeId] = force;
+        }
+    }
+
+    private AnalysisResult CreateResultSnapshot(string loadCaseName, bool equilibriumOK, EquilibriumCheck equilibrium)
+    {
+        var nodeSnapshots = _nodes.Select(n =>
+        {
+            var node = new Node(n.Id, n.Position)
+            {
+                ConstraintX = n.ConstraintX,
+                ConstraintY = n.ConstraintY,
+                ConstraintZ = n.ConstraintZ
+            };
+            node.ApplyForce(n.AppliedForce.X, n.AppliedForce.Y, n.AppliedForce.Z);
+            node.SetDisplacement(n.Displacement.X, n.Displacement.Y, n.Displacement.Z);
+            node.SetReactionForce(n.ReactionForce.X, n.ReactionForce.Y, n.ReactionForce.Z);
+            return node;
+        }).ToList();
+
+        var elementSnapshots = _elements.Select(e =>
+        {
+            var element = new Element(e.Id, e.StartNodeId, e.EndNodeId, e.Area, e.Material);
+            var startNode = GetNodeById(e.StartNodeId);
+            var endNode = GetNodeById(e.EndNodeId);
+            element.UpdateGeometry(startNode.Position, endNode.Position);
+            element.AxialForce = e.AxialForce;
+            element.Stress = e.Stress;
+            element.Strain = e.Strain;
+            return element;
+        }).ToList();
+
+        return new AnalysisResult
+        {
+            Nodes = nodeSnapshots,
+            Elements = elementSnapshots,
+            EquilibriumSatisfied = equilibriumOK,
+            Equilibrium = equilibrium,
+            SafetyChecks = CalculateSafetyChecks(elementSnapshots),
+            MaxDisplacement = nodeSnapshots.Max(n => n.Displacement.Magnitude),
+            MaxAxialForce = elementSnapshots.Max(e => Math.Abs(e.AxialForce)),
+            MaxStress = elementSnapshots.Max(e => Math.Abs(e.Stress)),
+            LoadCaseName = loadCaseName
+        };
+    }
+
+    private static SafetyCheckSummary CalculateSafetyChecks(List<Element> elements)
+    {
+        var checks = elements.Select(e =>
+        {
+            double allowable = e.Material.YieldStrength;
+            double demand = Math.Abs(e.Stress);
+            double utilization = allowable > 0 ? demand / allowable : 0;
+            bool pass = allowable > 0 && utilization <= 1.0;
+
+            return new ElementSafetyCheck
+            {
+                ElementId = e.Id,
+                DemandStress = demand,
+                AllowableStress = allowable,
+                UtilizationRatio = utilization,
+                IsPassing = pass,
+                Status = allowable <= 0
+                    ? "No yield strength"
+                    : pass ? "OK" : "NG"
+            };
+        }).ToList();
+
+        return new SafetyCheckSummary { ElementChecks = checks };
+    }
 }
 
 /// <summary>
@@ -432,6 +607,8 @@ public class AnalysisResult
     public List<Node> Nodes { get; init; } = new();
     public List<Element> Elements { get; init; } = new();
     public bool EquilibriumSatisfied { get; init; }
+    public EquilibriumCheck Equilibrium { get; init; } = new(0, 0, 0, 1e-6);
+    public SafetyCheckSummary SafetyChecks { get; init; } = new();
     public double MaxDisplacement { get; init; }
     public double MaxAxialForce { get; init; }
     public double MaxStress { get; init; }
@@ -460,5 +637,28 @@ public class AnalysisResult
                $"  Max Stress: {MaxStress:E2} Pa\n" +
                $"  Total Applied Load: {TotalAppliedLoad:F2} N\n" +
                $"  Total Reaction Force: {TotalReactionForce:F2} N";
+    }
+}
+
+/// <summary>
+/// Residual force check for global static equilibrium.
+/// </summary>
+public class EquilibriumCheck
+{
+    public double SumFX { get; }
+    public double SumFY { get; }
+    public double SumFZ { get; }
+    public double Tolerance { get; }
+    public bool IsSatisfied =>
+        Math.Abs(SumFX) <= Tolerance &&
+        Math.Abs(SumFY) <= Tolerance &&
+        Math.Abs(SumFZ) <= Tolerance;
+
+    public EquilibriumCheck(double sumFX, double sumFY, double sumFZ, double tolerance)
+    {
+        SumFX = sumFX;
+        SumFY = sumFY;
+        SumFZ = sumFZ;
+        Tolerance = tolerance;
     }
 }

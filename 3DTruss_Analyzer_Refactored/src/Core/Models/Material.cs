@@ -21,6 +21,24 @@ public record Material
     /// <summary>Yield strength for stress checking (units: Pascal)</summary>
     public double YieldStrength { get; init; }
 
+    public Material()
+    {
+    }
+
+    public Material(string name, double youngsModulus, double density)
+        : this(name, youngsModulus, 0.3, density)
+    {
+    }
+
+    public Material(string name, double youngsModulus, double poissonsRatio, double density, double yieldStrength = 0)
+    {
+        Name = name;
+        YoungsModulus = youngsModulus;
+        PoissonsRatio = poissonsRatio;
+        Density = density;
+        YieldStrength = yieldStrength;
+    }
+
     /// <summary>Standard structural steel properties</summary>
     public static Material StructuralSteel => new()
     {

@@ -11,11 +11,9 @@ namespace TrussAnalyzer.Core.Reporting
     public class PdfReportGenerator
     {
         private readonly AnalysisResult _result;
-        private readonly StructureModel _model;
 
-        public PdfReportGenerator(StructureModel model, AnalysisResult result)
+        public PdfReportGenerator(AnalysisResult result)
         {
-            _model = model ?? throw new ArgumentNullException(nameof(model));
             _result = result ?? throw new ArgumentNullException(nameof(result));
         }
 
@@ -106,25 +104,23 @@ namespace TrussAnalyzer.Core.Reporting
             sb.AppendLine("(Project Summary) Tj");
             sb.AppendLine("/F1 10 Tf");
             sb.AppendLine("0 -20 Td");
-            sb.AppendLine($"(Total Nodes: {_model.Nodes.Count}) Tj");
+            sb.AppendLine($"(Total Nodes: {_result.Nodes.Count}) Tj");
             sb.AppendLine("0 -15 Td");
-            sb.AppendLine($"(Total Elements: {_model.Elements.Count}) Tj");
+            sb.AppendLine($"(Total Elements: {_result.Elements.Count}) Tj");
             sb.AppendLine("0 -15 Td");
-            sb.AppendLine($"(Total Load Cases: 1) Tj");
+            sb.AppendLine($"(Load Case: {EscapePdfText(_result.LoadCaseName)}) Tj");
             
             sb.AppendLine("0 -30 Td");
             sb.AppendLine("(Node Displacements) Tj");
             sb.AppendLine("/F1 8 Tf");
             double y = 520;
-            foreach (var node in _model.Nodes)
+            foreach (var node in _result.Nodes)
             {
-                if (_result.NodeDisplacements.TryGetValue(node.Id, out var disp))
-                {
-                    sb.AppendLine($"0 -15 Td");
-                    sb.AppendLine($"(Node {node.Id}: DX={disp.X:E4}, DY={disp.Y:E4}, DZ={disp.Z:E4}) Tj");
-                    y -= 15;
-                    if (y < 200) break; // Limit displayed nodes
-                }
+                var disp = node.Displacement;
+                sb.AppendLine($"0 -15 Td");
+                sb.AppendLine($"(Node {node.Id}: DX={disp.X:E4}, DY={disp.Y:E4}, DZ={disp.Z:E4}) Tj");
+                y -= 15;
+                if (y < 200) break; // Limit displayed nodes
             }
             
             sb.AppendLine("0 -30 Td");
@@ -132,29 +128,24 @@ namespace TrussAnalyzer.Core.Reporting
             sb.AppendLine("(Element Forces) Tj");
             sb.AppendLine("/F1 8 Tf");
             y = 350;
-            foreach (var elem in _model.Elements)
+            foreach (var elem in _result.Elements)
             {
-                if (_result.ElementForces.TryGetValue(elem.Id, out var force))
-                {
-                    string state = force > 0 ? "Tension" : (force < 0 ? "Compression" : "Zero");
-                    sb.AppendLine($"0 -15 Td");
-                    sb.AppendLine($"(Element {elem.Id}: {force:F2} N [{state}]) Tj");
-                    y -= 15;
-                    if (y < 150) break; // Limit displayed elements
-                }
+                string state = elem.AxialForce > 0 ? "Tension" : (elem.AxialForce < 0 ? "Compression" : "Zero");
+                sb.AppendLine($"0 -15 Td");
+            sb.AppendLine($"(Element {elem.Id}: {elem.AxialForce:F2} N, {elem.Stress / 1e6:F3} MPa [{state}]) Tj");
+                y -= 15;
+                if (y < 150) break; // Limit displayed elements
             }
             
             sb.AppendLine("0 -30 Td");
             sb.AppendLine("/F1 12 Tf");
             sb.AppendLine("(Support Reactions) Tj");
             sb.AppendLine("/F1 8 Tf");
-            foreach (var constraint in _model.Constraints)
+            foreach (var node in _result.Nodes.Where(n => n.IsConstrained))
             {
-                if (_result.Reactions.TryGetValue(constraint.NodeId, out var reaction))
-                {
-                    sb.AppendLine($"0 -15 Td");
-                    sb.AppendLine($"(Node {constraint.NodeId}: RX={reaction.X:F2}, RY={reaction.Y:F2}, RZ={reaction.Z:F2}) Tj");
-                }
+                var reaction = node.ReactionForce;
+                sb.AppendLine($"0 -15 Td");
+                sb.AppendLine($"(Node {node.Id}: RX={reaction.X:F2}, RY={reaction.Y:F2}, RZ={reaction.Z:F2}) Tj");
             }
             
             sb.AppendLine("0 -40 Td");
@@ -162,15 +153,30 @@ namespace TrussAnalyzer.Core.Reporting
             sb.AppendLine("(Equilibrium Check) Tj");
             sb.AppendLine("/F1 8 Tf");
             sb.AppendLine($"0 -15 Td");
-            sb.AppendLine($"(Sum FX: {_result.EquilibriumCheck.SumFX:E6} N) Tj");
+            sb.AppendLine($"(Sum FX: {_result.Equilibrium.SumFX:E6} N) Tj");
             sb.AppendLine("0 -15 Td");
-            sb.AppendLine($"(Sum FY: {_result.EquilibriumCheck.SumFY:E6} N) Tj");
+            sb.AppendLine($"(Sum FY: {_result.Equilibrium.SumFY:E6} N) Tj");
             sb.AppendLine("0 -15 Td");
-            sb.AppendLine($"(Sum FZ: {_result.EquilibriumCheck.SumFZ:E6} N) Tj");
+            sb.AppendLine($"(Sum FZ: {_result.Equilibrium.SumFZ:E6} N) Tj");
+
+            sb.AppendLine("0 -30 Td");
+            sb.AppendLine("/F1 12 Tf");
+            sb.AppendLine("(Safety Checks) Tj");
+            sb.AppendLine("/F1 8 Tf");
+            foreach (var check in _result.SafetyChecks.ElementChecks.Take(10))
+            {
+                sb.AppendLine("0 -15 Td");
+                sb.AppendLine($"(Element {check.ElementId}: Util={check.UtilizationRatio:F3}, {EscapePdfText(check.Status)}) Tj");
+            }
             
             sb.AppendLine("ET");
             
             return sb.ToString();
+        }
+
+        private static string EscapePdfText(string text)
+        {
+            return text.Replace("\\", "\\\\").Replace("(", "\\(").Replace(")", "\\)");
         }
     }
 }

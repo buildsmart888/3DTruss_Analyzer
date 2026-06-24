@@ -2,177 +2,106 @@
 
 ## Project Structure
 
-```
+```text
 3DTruss_Analyzer_Refactored/
 ├── src/
-│   ├── Core/           # FEM solver engine
+│   ├── Core/                 # FEM/direct stiffness solver
+│   │   ├── Models/           # Node, Element, Material, LoadCase
+│   │   ├── IO/               # JSON/CSV import and export
+│   │   ├── Reporting/        # Basic report generation
+│   │   ├── Utilities/        # Matrix operations
 │   │   └── TrussSolver.cs
-│   ├── Models/         # Data structures
-│   │   ├── Geometry.cs      (Point3D, Vector3D)
-│   │   ├── Node.cs
-│   │   ├── Element.cs
-│   │   ├── Material.cs
-│   │   └── Constraint.cs
-│   ├── UI/             # User interface (to be implemented)
-│   └── Utilities/      # Helper classes
-│       └── Matrix.cs        (Matrix operations, solver)
-├── tests/
-│   ├── Unit/           # Unit tests
-│   └── Integration/    # Integration tests
-├── docs/               # Documentation
-├── examples/           # Example models
-└── 3DTrussAnalyzer.sln # Solution file
+│   └── UI/WinForms/          # Desktop UI
+├── tests/                    # Unit and integration tests
+├── docs/                     # Documentation
+├── examples/                 # Example models
+└── TrussAnalyzer.sln
 ```
 
 ## Getting Started
 
-### Prerequisites
-- .NET 6.0 SDK or later
-- Visual Studio 2022 or VS Code
-- Git
+Prerequisites:
 
-### Build Instructions
+- .NET 8 SDK or later
+- Visual Studio 2022, VS Code, or Rider
+
+Build and test:
 
 ```bash
-# Restore dependencies
-dotnet restore
-
-# Build the project
-dotnet build
-
-# Run tests
-dotnet test
-
-# Run the application
-dotnet run
+dotnet build TrussAnalyzer.sln
+dotnet test TrussAnalyzer.sln
 ```
+
+Run the UI:
+
+```bash
+dotnet run --project src/UI/WinForms/TrussAnalyzer.UI.csproj
+```
+
+## Engineering Assumptions
+
+- Units are SI: m, N, Pa, kg/m3.
+- Members are pin-jointed truss elements that carry axial force only.
+- Analysis is linear elastic and small displacement.
+- A node has three translational DOFs: X, Y, Z.
+- 2D models must explicitly constrain out-of-plane Z DOFs.
+- Self-weight is included only through a `LoadCase` with `IncludeSelfWeight = true`.
+
+## Known Limitations
+
+- No bending, shear, moment releases, frame elements, or plate/shell elements.
+- No nonlinear geometry, buckling, plasticity, or dynamic analysis.
+- No AISC/ASCE design-code safety checks yet.
+- The WinForms UI is a functional baseline; advanced model editing and real 3D visualization are future work.
+- The WinForms UI supports grid editing, validation, and a basic projected structure view.
+- The PDF generator is intentionally minimal and should not be treated as a full report-layout engine.
+- Safety checks are basic stress/yield utilization checks, not code-compliant design checks.
+- The current `Matrix.SolveAuto` path still uses dense Gaussian elimination; sparse solver work is future optimization.
 
 ## Coding Standards
 
-### 1. Naming Conventions
-- **Classes**: PascalCase (e.g., `TrussSolver`, `AnalysisResult`)
-- **Methods**: PascalCase (e.g., `Analyze`, `CalculateReactions`)
-- **Properties**: PascalCase (e.g., `YoungsModulus`, `AxialForce`)
-- **Private fields**: _camelCase (e.g., `_nodes`, `_elements`)
-- **Parameters**: camelCase (e.g., `startNodeId`, `includeSelfWeight`)
+- Use PascalCase for public types, methods, and properties.
+- Use `_camelCase` for private fields.
+- Include units in XML comments for physical quantities.
+- Keep Core independent from UI.
+- Prefer explicit exceptions over silent fallback for invalid engineering input.
 
-### 2. Documentation
-- All public APIs must have XML documentation comments
-- Include units for all physical quantities
-- Document assumptions and limitations
+## Testing Expectations
 
-### 3. Error Handling
-- Validate inputs at method boundaries
-- Throw specific exceptions with meaningful messages
-- Never silently swallow exceptions
+Core changes should include focused tests for:
 
-### 4. Testing Requirements
-- All core algorithms must have unit tests
-- Integration tests for complete workflows
-- Minimum 80% code coverage
+- Matrix solve behavior
+- Model validation
+- Nodal load analysis
+- Self-weight analysis
+- Reactions and equilibrium residuals
+- Load cases and load combinations
+- JSON import/export round trips
+- Safety utilization and validation messages
 
-## Adding New Features
+Before handing off a change, run:
 
-### 1. New Element Type
-1. Create class in `src/Models/` inheriting from base element
-2. Implement stiffness matrix calculation
-3. Add unit tests
-4. Update documentation
-
-### 2. New Solver Algorithm
-1. Create class in `src/Core/`
-2. Implement `IAnalysisStrategy` interface
-3. Add validation tests
-4. Compare results with existing solver
-
-### 3. New UI Component
-1. Create in `src/UI/`
-2. Follow MVVM pattern
-3. Add UI tests
-4. Ensure accessibility
-
-## Git Workflow
-
-### Branch Naming
-- `feature/description` - New features
-- `fix/description` - Bug fixes
-- `docs/description` - Documentation updates
-- `test/description` - Test additions
-
-### Commit Messages
+```bash
+dotnet build TrussAnalyzer.sln
+dotnet test TrussAnalyzer.sln
 ```
-type(scope): brief description
-
-[Optional detailed explanation]
-
-Fixes: #issue_number
-```
-
-Types: feat, fix, docs, style, refactor, test, chore
-
-Example:
-```
-feat(core): add self-weight calculation
-
-Implemented correct self-weight formula: W = ρALg
-Distributed equally to both end nodes
-
-Fixes: #42
-```
-
-## Quality Assurance Checklist
-
-Before submitting PR:
-- [ ] Code follows naming conventions
-- [ ] All public methods documented
-- [ ] Units specified for physical quantities
-- [ ] Unit tests written and passing
-- [ ] Integration tests updated
-- [ ] No compiler warnings
-- [ ] Equilibrium check passes
-- [ ] Code reviewed by team member
 
 ## Debugging Tips
 
-### Common Issues
+Singular matrix errors usually mean:
 
-1. **Singular Matrix Error**
-   - Check for insufficient constraints
-   - Verify node connectivity
-   - Look for zero-length elements
+- Missing supports
+- Unconstrained out-of-plane DOFs in a 2D model
+- A mechanism caused by insufficient triangulation
+- Zero-length or disconnected elements
 
-2. **Unexpected Displacements**
-   - Verify load directions
-   - Check material properties (units!)
-   - Confirm boundary conditions
+Unexpected reactions usually mean:
 
-3. **Equilibrium Not Satisfied**
-   - Review load application
-   - Check reaction calculations
-   - Verify numerical precision
+- Loads were applied in a different load case than expected
+- Self-weight was included or omitted unintentionally
+- Boundary conditions do not match the intended support model
 
-### Logging
-Enable debug logging in appsettings:
-```json
-{
-  "Logging": {
-    "LogLevel": {
-      "Default": "Debug",
-      "TrussSolver": "Trace"
-    }
-  }
-}
-```
+Large-model warnings mean:
 
-## Performance Considerations
-
-- For large models (>1000 DOF), consider sparse matrix storage
-- Profile before optimizing
-- Cache repeated calculations
-- Use parallel processing for independent operations
-
-## References
-
-- [Engineering Principles](ENGINEERING_PRINCIPLES.md)
-- [API Documentation](API_REFERENCE.md)
-- [Testing Guide](TESTING_GUIDE.md)
+- The model can still run, but dense matrix memory/time may grow quickly.
+- Consider reducing the model size or implementing a sparse solver before production use on large structures.

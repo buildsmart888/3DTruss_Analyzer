@@ -108,7 +108,9 @@ public static class StructureImporterExporter
                     wx = 0.0,
                     wy = 0.0,
                     wz = 0.0,
-                    direction = ""
+                    direction = "",
+                    startRelativeDistance = 0.0,
+                    endRelativeDistance = 1.0
                 },
                 MemberPointLoad p => new
                 {
@@ -126,7 +128,9 @@ public static class StructureImporterExporter
                     wx = 0.0,
                     wy = 0.0,
                     wz = 0.0,
-                    direction = p.Direction.ToString()
+                    direction = p.Direction.ToString(),
+                    startRelativeDistance = 0.0,
+                    endRelativeDistance = 1.0
                 },
                 MemberDistributedLoad d => new
                 {
@@ -144,7 +148,9 @@ public static class StructureImporterExporter
                     wx = d.ForcePerLength.X,
                     wy = d.ForcePerLength.Y,
                     wz = d.ForcePerLength.Z,
-                    direction = d.Direction.ToString()
+                    direction = d.Direction.ToString(),
+                    startRelativeDistance = d.StartRelativeDistance,
+                    endRelativeDistance = d.EndRelativeDistance
                 },
                 _ => throw new NotSupportedException($"Unsupported load item type {l.GetType().Name}.")
             })
@@ -349,7 +355,9 @@ public static class StructureImporterExporter
                         LoadCaseId = loadCaseId,
                         ElementId = GetPropertyCaseInsensitive(load, "elementId").GetInt32(),
                         ForcePerLength = new Vector3D(GetDoubleOrDefault(load, "wx"), GetDoubleOrDefault(load, "wy"), GetDoubleOrDefault(load, "wz")),
-                        Direction = Enum.Parse<LoadDirection>(GetStringOrDefault(load, "direction", "GlobalZ"), ignoreCase: true)
+                        Direction = Enum.Parse<LoadDirection>(GetStringOrDefault(load, "direction", "GlobalZ"), ignoreCase: true),
+                        StartRelativeDistance = GetDoubleOrDefault(load, "startRelativeDistance", 0.0),
+                        EndRelativeDistance = GetDoubleOrDefault(load, "endRelativeDistance", 1.0)
                     });
                 }
             }

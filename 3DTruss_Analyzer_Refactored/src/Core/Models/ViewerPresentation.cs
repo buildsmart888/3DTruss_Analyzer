@@ -34,6 +34,8 @@ public class ViewerLayerVisibility
     public bool Elements { get; set; } = true;
     public bool Supports { get; set; } = true;
     public bool Loads { get; set; } = true;
+    public bool LoadLabels { get; set; } = true;
+    public bool ReactionLabels { get; set; } = true;
     public bool Labels { get; set; } = true;
     public bool LocalAxes { get; set; } = true;
     public bool DeformedShape { get; set; } = true;

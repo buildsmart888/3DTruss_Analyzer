@@ -246,6 +246,9 @@ public class StructuralSolverMvpTests
         Assert.Equal(6, result.Diagnostics.ConstrainedDof);
         Assert.Contains("Dense", result.Diagnostics.SolverName);
         Assert.True(result.Diagnostics.MatrixDensity > 0);
+        Assert.True(result.Diagnostics.AppliedLoadMagnitude > 0);
+        Assert.True(result.Diagnostics.ReactionMagnitude > 0);
+        Assert.True(result.Diagnostics.EquilibriumResidualMagnitude <= result.Equilibrium.Tolerance);
     }
 
     [Fact]
@@ -267,6 +270,29 @@ public class StructuralSolverMvpTests
         Assert.NotEqual(Vector3D.Zero, element.EndEndForces.Force);
         Assert.True(result.Summary.MaxShearY > 0);
         Assert.True(result.Summary.MaxMomentZ > 0);
+        Assert.Equal(5, element.StationResults.Count);
+        Assert.Contains(element.StationResults, s => Math.Abs(s.RelativePosition - 0.5) < 1e-9);
+    }
+
+    [Fact]
+    public void PartialDistributedLoad_ProducesExpectedTotalReaction()
+    {
+        double length = 4;
+        var model = CreateFixedFixedFrame(length);
+        model.LoadCases.Add(new LoadCase { CaseId = "P", Name = "Partial UDL" });
+        model.Loads.Add(new MemberDistributedLoad
+        {
+            LoadCaseId = "P",
+            ElementId = 1,
+            ForcePerLength = new Vector3D(0, -1000, 0),
+            Direction = LoadDirection.GlobalY,
+            StartRelativeDistance = 0.25,
+            EndRelativeDistance = 0.75
+        });
+
+        var result = new StructuralSolver(model).Analyze("P");
+
+        Assert.Equal(1000 * length * 0.5, result.NodeResults.Sum(n => n.ReactionForce.Y), precision: 6);
     }
 
     [Fact]
@@ -295,6 +321,27 @@ public class StructuralSolverMvpTests
         Assert.Equal("LL", imported.ActiveLoadCaseId);
         Assert.Equal(ResultDiagramMode.MomentDiagram, imported.DisplaySettings.DiagramMode);
         Assert.False(imported.DisplaySettings.Layers.Loads);
+    }
+
+    [Fact]
+    public void StructuralJsonV2_PreservesPartialDistributedLoadRange()
+    {
+        var model = CreateCantileverFrame(2);
+        model.Loads.Add(new MemberDistributedLoad
+        {
+            LoadCaseId = "DL",
+            ElementId = 1,
+            ForcePerLength = new Vector3D(0, 0, -500),
+            StartRelativeDistance = 0.2,
+            EndRelativeDistance = 0.8
+        });
+
+        var imported = StructureImporterExporter.ImportStructuralModelFromJson(
+            StructureImporterExporter.ExportStructuralModelToJson(model));
+        var load = Assert.IsType<MemberDistributedLoad>(imported.Loads.Single());
+
+        Assert.Equal(0.2, load.StartRelativeDistance, precision: 10);
+        Assert.Equal(0.8, load.EndRelativeDistance, precision: 10);
     }
 
     [Fact]
@@ -352,6 +399,10 @@ public class StructuralSolverMvpTests
         Assert.Contains(messages, m => m.Message.Contains("No supports"));
         Assert.Contains(messages, m => m.Message.Contains("missing material"));
         Assert.Contains(messages, m => m.Message.Contains("missing section"));
+        Assert.Contains(messages, m =>
+            m.ObjectType == SelectedModelObjectType.Element &&
+            m.ObjectId == 1 &&
+            m.Message.Contains("missing material"));
     }
 
     private static StructuralModel CreateCantileverFrame(double length, double area = 0.003)

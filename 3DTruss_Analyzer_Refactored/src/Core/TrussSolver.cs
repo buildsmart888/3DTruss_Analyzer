@@ -649,6 +649,7 @@ public class EquilibriumCheck
     public double SumFY { get; }
     public double SumFZ { get; }
     public double Tolerance { get; }
+    public double ResidualMagnitude => Math.Sqrt(SumFX * SumFX + SumFY * SumFY + SumFZ * SumFZ);
     public bool IsSatisfied =>
         Math.Abs(SumFX) <= Tolerance &&
         Math.Abs(SumFY) <= Tolerance &&

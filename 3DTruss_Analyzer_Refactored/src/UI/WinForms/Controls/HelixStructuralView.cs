@@ -25,6 +25,9 @@ public sealed class HelixStructuralView : Forms.UserControl
         Background = new LinearGradientBrush(Color.FromRgb(222, 240, 253), Colors.White, 90)
     };
     private readonly ModelVisual3D _scene = new();
+    private readonly Dictionary<Visual3D, SelectedModelObject> _visualSelections = new();
+    private readonly Dictionary<Model3D, SelectedModelObject> _modelSelections = new();
+    private readonly Forms.ContextMenuStrip _contextMenu = new();
     private StructuralModel? _model;
     private StructuralAnalysisResult? _result;
     private TrussSolver? _legacySolver;
@@ -32,6 +35,10 @@ public sealed class HelixStructuralView : Forms.UserControl
     private ViewerDisplayOptions _options = new();
     private int _selectedElementId;
     private int _selectedNodeId;
+    private SelectedModelObject _currentSelection = SelectedModelObject.None;
+
+    public event EventHandler<SelectedModelObject>? ObjectSelected;
+    public event EventHandler<ViewerCommandRequestedEventArgs>? ViewerCommandRequested;
 
     public HelixStructuralView()
     {
@@ -42,6 +49,9 @@ public sealed class HelixStructuralView : Forms.UserControl
         Controls.Add(_toolbar);
         _viewport.Children.Add(new SunLight());
         _viewport.Children.Add(_scene);
+        _viewport.MouseLeftButtonDown += OnViewportMouseLeftButtonDown;
+        _viewport.MouseRightButtonUp += OnViewportMouseRightButtonUp;
+        BuildContextMenu();
         SetIsoView();
     }
 
@@ -69,6 +79,7 @@ public sealed class HelixStructuralView : Forms.UserControl
 
     public void SelectObject(SelectedModelObject selection)
     {
+        _currentSelection = selection;
         _selectedNodeId = selection.Type == SelectedModelObjectType.Node ? selection.Id : 0;
         _selectedElementId = selection.Type == SelectedModelObjectType.Element ? selection.Id : 0;
         RefreshView();
@@ -77,6 +88,8 @@ public sealed class HelixStructuralView : Forms.UserControl
     public void RefreshView()
     {
         _scene.Children.Clear();
+        _visualSelections.Clear();
+        _modelSelections.Clear();
         if (_model == null || _model.Nodes.Count == 0)
         {
             AddText("No model loaded", new CorePoint3D(0, 0, 0), Brushes.DimGray);
@@ -96,6 +109,8 @@ public sealed class HelixStructuralView : Forms.UserControl
             AddSupports();
         if (_options.Layers.Loads)
             AddLoads();
+        if (_options.Layers.ReactionLabels && _result != null)
+            AddReactionLabels();
         if (_options.Layers.LocalAxes)
             AddLocalAxes();
         AddLegend();
@@ -115,6 +130,8 @@ public sealed class HelixStructuralView : Forms.UserControl
             case "Elements": _options.Layers.Elements = visible; break;
             case "Supports": _options.Layers.Supports = visible; break;
             case "Loads": _options.Layers.Loads = visible; break;
+            case "Load Labels": _options.Layers.LoadLabels = visible; break;
+            case "Reaction Labels": _options.Layers.ReactionLabels = visible; break;
             case "Labels": _options.Layers.Labels = visible; break;
             case "Local Axes": _options.Layers.LocalAxes = visible; break;
             case "Deformed Shape": _options.Layers.DeformedShape = visible; break;
@@ -133,6 +150,8 @@ public sealed class HelixStructuralView : Forms.UserControl
         AddButton("Side", (_, _) => SetCamera(new MediaPoint3D(10, 0, 0), new MediaVector3D(0, 0, 1)));
         AddToggle("Labels", true, value => _options.Layers.Labels = value);
         AddToggle("Loads", true, value => _options.Layers.Loads = value);
+        AddToggle("Load Labels", true, value => _options.Layers.LoadLabels = value);
+        AddToggle("Reactions", true, value => _options.Layers.ReactionLabels = value);
         AddToggle("Local Axes", true, value => _options.Layers.LocalAxes = value);
         AddToggle("Deformed", true, value => _options.Layers.DeformedShape = value);
         AddToggle("Diagrams", true, value => _options.Layers.Diagrams = value);
@@ -143,6 +162,62 @@ public sealed class HelixStructuralView : Forms.UserControl
             modeDrop.DropDownItems.Add(mode.ToString(), null, (_, _) => SetDiagramMode(mode));
         }
         _toolbar.Items.Add(modeDrop);
+    }
+
+    private void BuildContextMenu()
+    {
+        AddContextCommand("Add Node", "AddNode");
+        AddContextCommand("Add Frame Member", "AddFrameMember");
+        AddContextCommand("Add Truss Member", "AddTrussMember");
+        AddContextCommand("Add Nodal Load", "AddNodalLoad");
+        AddContextCommand("Add Member Distributed Load", "AddMemberDistributedLoad");
+        _contextMenu.Items.Add(new Forms.ToolStripSeparator());
+        AddContextCommand("Duplicate", "Duplicate");
+        AddContextCommand("Delete", "Delete");
+        AddContextCommand("Show Properties", "ShowProperties");
+    }
+
+    private void AddContextCommand(string text, string command)
+    {
+        _contextMenu.Items.Add(text, null, (_, _) =>
+            ViewerCommandRequested?.Invoke(this, new ViewerCommandRequestedEventArgs(command, _currentSelection)));
+    }
+
+    private void OnViewportMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var selection = HitTestSelection(e.GetPosition(_viewport));
+        if (selection.Type == SelectedModelObjectType.None)
+            return;
+
+        SelectObject(selection);
+        ObjectSelected?.Invoke(this, selection);
+        e.Handled = true;
+    }
+
+    private void OnViewportMouseRightButtonUp(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        var selection = HitTestSelection(e.GetPosition(_viewport));
+        if (selection.Type != SelectedModelObjectType.None)
+        {
+            SelectObject(selection);
+            ObjectSelected?.Invoke(this, selection);
+        }
+
+        _contextMenu.Show(this, PointToClient(Forms.Cursor.Position));
+        e.Handled = true;
+    }
+
+    private SelectedModelObject HitTestSelection(System.Windows.Point position)
+    {
+        foreach (var hit in Viewport3DHelper.FindHits(_viewport.Viewport, position))
+        {
+            if (hit.Visual != null && _visualSelections.TryGetValue(hit.Visual, out var visualSelection))
+                return visualSelection;
+            if (hit.Model != null && _modelSelections.TryGetValue(hit.Model, out var modelSelection))
+                return modelSelection;
+        }
+
+        return SelectedModelObject.None;
     }
 
     private void AddButton(string text, EventHandler handler)
@@ -217,13 +292,14 @@ public sealed class HelixStructuralView : Forms.UserControl
             var result = GetElementResult(element.Id);
             var brush = GetElementBrush(element, result, maxUtil);
             double diameter = element.Id == _selectedElementId ? 0.075 : 0.045;
-            _scene.Children.Add(new PipeVisual3D
+            var pipe = new PipeVisual3D
             {
                 Point1 = ToMedia(start.Position),
                 Point2 = ToMedia(end.Position),
                 Diameter = diameter,
                 Fill = brush
-            });
+            };
+            AddSelectableVisual(pipe, new SelectedModelObject { Type = SelectedModelObjectType.Element, Id = element.Id, Name = $"E{element.Id}" });
 
             if (_options.Layers.Labels)
                 AddText(GetElementLabel(element, result), Mid(start.Position, end.Position), Brushes.Black);
@@ -240,12 +316,13 @@ public sealed class HelixStructuralView : Forms.UserControl
 
         foreach (var node in _model.Nodes)
         {
-            _scene.Children.Add(new SphereVisual3D
+            var sphere = new SphereVisual3D
             {
                 Center = ToMedia(node.Position),
                 Radius = node.Id == _selectedNodeId ? 0.11 : 0.075,
                 Fill = node.IsConstrained ? Brushes.SeaGreen : Brushes.Black
-            });
+            };
+            AddSelectableVisual(sphere, new SelectedModelObject { Type = SelectedModelObjectType.Node, Id = node.Id, Name = $"N{node.Id}" });
             if (_options.Layers.Labels)
                 AddText($"N{node.Id}", Offset(node.Position, 0.1, 0.1, 0.1), Brushes.Black);
         }
@@ -259,14 +336,15 @@ public sealed class HelixStructuralView : Forms.UserControl
         foreach (var node in _model.Nodes.Where(n => n.IsConstrained))
         {
             var p = node.Position;
-            _scene.Children.Add(new BoxVisual3D
+            var support = new BoxVisual3D
             {
                 Center = ToMedia(new CorePoint3D(p.X, p.Y, p.Z - 0.08)),
                 Width = 0.25,
                 Length = 0.25,
                 Height = 0.08,
                 Fill = Brushes.DarkSlateGray
-            });
+            };
+            AddSelectableVisual(support, new SelectedModelObject { Type = SelectedModelObjectType.Node, Id = node.Id, Name = $"N{node.Id}" });
         }
     }
 
@@ -280,9 +358,9 @@ public sealed class HelixStructuralView : Forms.UserControl
         foreach (var node in _model.Nodes)
         {
             if (node.AppliedForce.Magnitude > 1e-9)
-                AddLoadArrow(node.Position, node.AppliedForce, $"F {FormatVectorForce(node.AppliedForce)}");
+                AddLoadArrow(node.Position, node.AppliedForce, LoadLabel($"F {FormatVectorForce(node.AppliedForce)}"));
             if (node.AppliedMoment.Magnitude > 1e-9)
-                AddText($"M {FormatVectorMoment(node.AppliedMoment)}", Offset(node.Position, 0, 0, 0.25), Brushes.DarkOrange);
+                AddLoadText($"M {FormatVectorMoment(node.AppliedMoment)}", Offset(node.Position, 0, 0, 0.25));
         }
 
         foreach (var load in _model.Loads)
@@ -291,25 +369,51 @@ public sealed class HelixStructuralView : Forms.UserControl
             {
                 case NodalLoad nodal when nodes.TryGetValue(nodal.NodeId, out var node):
                     if (nodal.Force.Magnitude > 1e-9)
-                        AddLoadArrow(node.Position, nodal.Force, $"{nodal.LoadCaseId} {FormatVectorForce(nodal.Force)}");
+                        AddLoadArrow(node.Position, nodal.Force, LoadLabel($"{nodal.LoadCaseId} {FormatVectorForce(nodal.Force)}"));
                     if (nodal.Moment.Magnitude > 1e-9)
-                        AddText($"{nodal.LoadCaseId} M {FormatVectorMoment(nodal.Moment)}", Offset(node.Position, 0, 0, 0.35), Brushes.DarkOrange);
+                        AddLoadText($"{nodal.LoadCaseId} M {FormatVectorMoment(nodal.Moment)}", Offset(node.Position, 0, 0, 0.35));
                     break;
                 case MemberPointLoad point when elements.TryGetValue(point.ElementId, out var element) &&
                     nodes.TryGetValue(element.StartNodeId, out var start) &&
                     nodes.TryGetValue(element.EndNodeId, out var end):
                     var p = Interpolate(start.Position, end.Position, point.RelativeDistance);
                     if (point.Force.Magnitude > 1e-9)
-                        AddLoadArrow(p, point.Force, $"{point.LoadCaseId} P {FormatVectorForce(point.Force)}");
+                        AddLoadArrow(p, point.Force, LoadLabel($"{point.LoadCaseId} P {FormatVectorForce(point.Force)}"));
                     break;
                 case MemberDistributedLoad distributed when elements.TryGetValue(distributed.ElementId, out var element) &&
                     nodes.TryGetValue(element.StartNodeId, out var start) &&
                     nodes.TryGetValue(element.EndNodeId, out var end):
+                    double a = Math.Clamp(distributed.StartRelativeDistance, 0, 1);
+                    double b = Math.Clamp(distributed.EndRelativeDistance, 0, 1);
+                    if (b < a)
+                        (a, b) = (b, a);
                     for (int i = 1; i <= 3; i++)
-                        AddLoadArrow(Interpolate(start.Position, end.Position, i / 4.0), distributed.ForcePerLength, string.Empty, 0.35);
-                    AddText($"{distributed.LoadCaseId} w {FormatVectorDistributedForce(distributed.ForcePerLength)}", Offset(Mid(start.Position, end.Position), 0, 0, 0.25), Brushes.DarkOrange);
+                        AddLoadArrow(Interpolate(start.Position, end.Position, a + (b - a) * i / 4.0), distributed.ForcePerLength, string.Empty, 0.35);
+                    AddLoadText($"{distributed.LoadCaseId} w {FormatVectorDistributedForce(distributed.ForcePerLength)} [{a:F2}-{b:F2}L]", Offset(Interpolate(start.Position, end.Position, (a + b) / 2), 0, 0, 0.25));
                     break;
             }
+        }
+    }
+
+    private void AddReactionLabels()
+    {
+        if (_model == null || _result == null)
+            return;
+
+        var nodeMap = _model.Nodes.ToDictionary(n => n.Id);
+        foreach (var result in _result.NodeResults)
+        {
+            if (!nodeMap.TryGetValue(result.NodeId, out var node))
+                continue;
+
+            if (result.ReactionForce.Magnitude > 1e-9)
+            {
+                AddReactionArrow(node.Position, result.ReactionForce);
+                AddText($"R {FormatVectorForce(result.ReactionForce)}", Offset(node.Position, 0.12, 0.12, 0.22), Brushes.DarkCyan);
+            }
+
+            if (result.ReactionMoment.Magnitude > 1e-9)
+                AddText($"RM {FormatVectorMoment(result.ReactionMoment)}", Offset(node.Position, 0.12, -0.12, 0.35), Brushes.DarkCyan);
         }
     }
 
@@ -361,23 +465,72 @@ public sealed class HelixStructuralView : Forms.UserControl
 
     private void AddResultDiagram(StructuralElement element, CorePoint3D start, CorePoint3D end, ElementForceResult result)
     {
-        double value = _options.DiagramMode switch
+        if (_options.DiagramMode == ResultDiagramMode.Utilization)
         {
-            ResultDiagramMode.MomentDiagram => Math.Max(result.MomentY, result.MomentZ),
-            ResultDiagramMode.Utilization => _result?.DesignChecks.Where(c => c.ElementId == element.Id).Select(c => c.Utilization).DefaultIfEmpty(0).Max() ?? 0,
-            _ => Math.Max(Math.Abs(result.AxialForce), Math.Max(result.ShearY, result.ShearZ))
-        };
-        if (value <= 1e-9)
+            AddUtilizationMarker(element, start, end);
+            return;
+        }
+
+        if (result.StationResults.Count == 0)
             return;
 
         var (_, span) = GetBounds();
-        double offset = Math.Min(span * 0.06, 0.55);
+        double maxValue = result.StationResults
+            .Select(GetDiagramStationValue)
+            .Select(Math.Abs)
+            .DefaultIfEmpty(0)
+            .Max();
+        if (maxValue <= 1e-9)
+            return;
+
+        double maxOffset = Math.Min(span * 0.08, 0.75);
         var axes = StructuralSolver.GetLocalAxes(start, end, element.RollAngleRadians);
-        var p1 = Offset(start, axes.ZAxis.X * offset, axes.ZAxis.Y * offset, axes.ZAxis.Z * offset);
-        var p2 = Offset(end, axes.ZAxis.X * offset, axes.ZAxis.Y * offset, axes.ZAxis.Z * offset);
-        AddLine(start, p1, Colors.DarkOrange, 2);
-        AddLine(p1, p2, Colors.DarkOrange, 2);
-        AddLine(p2, end, Colors.DarkOrange, 2);
+        var color = _options.DiagramMode == ResultDiagramMode.MomentDiagram ? Colors.DarkViolet : Colors.DarkOrange;
+        var points = result.StationResults
+            .OrderBy(s => s.RelativePosition)
+            .Select(s =>
+            {
+                var basePoint = Interpolate(start, end, s.RelativePosition);
+                double value = GetDiagramStationValue(s);
+                double offset = value / maxValue * maxOffset;
+                return Offset(basePoint, axes.ZAxis.X * offset, axes.ZAxis.Y * offset, axes.ZAxis.Z * offset);
+            })
+            .ToList();
+
+        for (int i = 0; i < points.Count - 1; i++)
+            AddLine(points[i], points[i + 1], color, 2);
+
+        var midStation = result.StationResults.OrderBy(s => Math.Abs(s.RelativePosition - 0.5)).First();
+        var midPoint = points[points.Count / 2];
+        if (_options.Layers.Labels)
+            AddText(FormatDiagramValue(midStation), midPoint, new SolidColorBrush(color));
+    }
+
+    private void AddUtilizationMarker(StructuralElement element, CorePoint3D start, CorePoint3D end)
+    {
+        double utilization = _result?.DesignChecks.Where(c => c.ElementId == element.Id).Select(c => c.Utilization).DefaultIfEmpty(0).Max() ?? 0;
+        if (utilization <= 1e-9 || !_options.Layers.Labels)
+            return;
+
+        AddText($"U={utilization:F2}", Offset(Mid(start, end), 0, 0, 0.18), GetUtilizationBrush(element.Id, Math.Max(1e-9, _result?.MaxUtilization ?? 0)));
+    }
+
+    private double GetDiagramStationValue(ElementStationResult station)
+    {
+        return _options.DiagramMode switch
+        {
+            ResultDiagramMode.MomentDiagram => Math.Abs(station.MomentZ) >= Math.Abs(station.MomentY) ? station.MomentZ : station.MomentY,
+            _ => Math.Abs(station.ShearY) >= Math.Abs(station.ShearZ) ? station.ShearY : station.ShearZ
+        };
+    }
+
+    private string FormatDiagramValue(ElementStationResult station)
+    {
+        return _options.DiagramMode switch
+        {
+            ResultDiagramMode.MomentDiagram => $"M={FormatMoment(GetDiagramStationValue(station))}",
+            _ => $"V={FormatForce(GetDiagramStationValue(station))}"
+        };
     }
 
     private void AddLegend()
@@ -451,6 +604,14 @@ public sealed class HelixStructuralView : Forms.UserControl
         AddText(label, new CorePoint3D(end.X, end.Y, end.Z), brush);
     }
 
+    private void AddSelectableVisual(Visual3D visual, SelectedModelObject selection)
+    {
+        _scene.Children.Add(visual);
+        _visualSelections[visual] = selection;
+        if (visual is ModelVisual3D modelVisual && modelVisual.Content != null)
+            _modelSelections[modelVisual.Content] = selection;
+    }
+
     private void AddLoadArrow(CorePoint3D point, CoreVector3D load, string label, double arrowLength = 0.55)
     {
         if (load.Magnitude <= 1e-9)
@@ -461,6 +622,22 @@ public sealed class HelixStructuralView : Forms.UserControl
         var direction = load.Normalize().Scale(length);
         var end = Offset(point, direction.X, direction.Y, direction.Z);
         AddArrow(ToMedia(point), ToMedia(end), Brushes.DarkOrange, label);
+    }
+
+    private void AddReactionArrow(CorePoint3D point, CoreVector3D reaction)
+    {
+        var (_, span) = GetBounds();
+        double length = Math.Max(0.25, span * 0.08);
+        var direction = reaction.Normalize().Scale(length);
+        AddArrow(ToMedia(point), ToMedia(Offset(point, direction.X, direction.Y, direction.Z)), Brushes.DarkCyan, string.Empty);
+    }
+
+    private string LoadLabel(string label) => _options.Layers.LoadLabels ? label : string.Empty;
+
+    private void AddLoadText(string text, CorePoint3D position)
+    {
+        if (_options.Layers.LoadLabels)
+            AddText(text, position, Brushes.DarkOrange);
     }
 
     private void AddLine(CorePoint3D start, CorePoint3D end, Color color, double thickness)
@@ -531,4 +708,16 @@ public sealed class HelixStructuralView : Forms.UserControl
         if (Math.Abs(force.Z) > 1e-9) parts.Add($"wz={FormatDistributedForce(force.Z)}");
         return parts.Count == 0 ? "0 N/m" : string.Join(", ", parts);
     }
+}
+
+public sealed class ViewerCommandRequestedEventArgs : EventArgs
+{
+    public ViewerCommandRequestedEventArgs(string command, SelectedModelObject selection)
+    {
+        Command = command;
+        Selection = selection;
+    }
+
+    public string Command { get; }
+    public SelectedModelObject Selection { get; }
 }

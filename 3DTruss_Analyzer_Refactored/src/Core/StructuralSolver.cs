@@ -46,26 +46,26 @@ public class StructuralSolver
         foreach (var element in _model.Elements)
         {
             if (!_nodes.ContainsKey(element.StartNodeId))
-                messages.Add(Error($"Element {element.Id} references missing start node {element.StartNodeId}."));
+                messages.Add(Error($"Element {element.Id} references missing start node {element.StartNodeId}.", SelectedModelObjectType.Element, element.Id));
             if (!_nodes.ContainsKey(element.EndNodeId))
-                messages.Add(Error($"Element {element.Id} references missing end node {element.EndNodeId}."));
+                messages.Add(Error($"Element {element.Id} references missing end node {element.EndNodeId}.", SelectedModelObjectType.Element, element.Id));
             if (!_materials.ContainsKey(element.MaterialId))
-                messages.Add(Error($"Element {element.Id} references missing material {element.MaterialId}."));
+                messages.Add(Error($"Element {element.Id} references missing material {element.MaterialId}.", SelectedModelObjectType.Element, element.Id));
             if (!_sections.ContainsKey(element.SectionId))
-                messages.Add(Error($"Element {element.Id} references missing section {element.SectionId}."));
+                messages.Add(Error($"Element {element.Id} references missing section {element.SectionId}.", SelectedModelObjectType.Element, element.Id));
 
             if (_nodes.TryGetValue(element.StartNodeId, out var start) &&
                 _nodes.TryGetValue(element.EndNodeId, out var end) &&
                 start.Position.DistanceTo(end.Position) < 1e-10)
             {
-                messages.Add(Error($"Element {element.Id} has zero or near-zero length."));
+                messages.Add(Error($"Element {element.Id} has zero or near-zero length.", SelectedModelObjectType.Element, element.Id));
             }
 
             if (element.Type == ElementType.Frame3D &&
                 _sections.TryGetValue(element.SectionId, out var section) &&
                 (section.Area <= 0 || section.Iy <= 0 || section.Iz <= 0 || section.J <= 0))
             {
-                messages.Add(Error($"Frame element {element.Id} requires positive A, Iy, Iz, and J."));
+                messages.Add(Error($"Frame element {element.Id} requires positive A, Iy, Iz, and J.", SelectedModelObjectType.Element, element.Id));
             }
 
             if (element.Type == ElementType.Truss)
@@ -73,7 +73,9 @@ public class StructuralSolver
                 messages.Add(new ModelValidationMessage
                 {
                     Severity = "Info",
-                    Message = $"Element {element.Id} is a truss element: only axial force is recovered; shear, torsion, and bending moments are not applicable."
+                    Message = $"Element {element.Id} is a truss element: only axial force is recovered; shear, torsion, and bending moments are not applicable.",
+                    ObjectType = SelectedModelObjectType.Element,
+                    ObjectId = element.Id
                 });
             }
 
@@ -83,9 +85,9 @@ public class StructuralSolver
                 var axes = GetLocalAxes(axisStart.Position, axisEnd.Position, element.RollAngleRadians);
                 double handedness = axes.XAxis.Cross(axes.YAxis).Dot(axes.ZAxis);
                 if (handedness < 0.999)
-                    messages.Add(new ModelValidationMessage { Severity = "Warning", Message = $"Element {element.Id} local axes are not strongly right-handed; check roll angle." });
+                    messages.Add(new ModelValidationMessage { Severity = "Warning", Message = $"Element {element.Id} local axes are not strongly right-handed; check roll angle.", ObjectType = SelectedModelObjectType.Element, ObjectId = element.Id });
                 if (Math.Abs(element.RollAngleRadians) > Math.PI * 2)
-                    messages.Add(new ModelValidationMessage { Severity = "Warning", Message = $"Element {element.Id} roll angle exceeds 360 degrees; confirm units are radians in JSON and degrees in UI." });
+                    messages.Add(new ModelValidationMessage { Severity = "Warning", Message = $"Element {element.Id} roll angle exceeds 360 degrees; confirm units are radians in JSON and degrees in UI.", ObjectType = SelectedModelObjectType.Element, ObjectId = element.Id });
             }
         }
 
@@ -96,9 +98,9 @@ public class StructuralSolver
         foreach (var element in _model.Elements.Where(e => e.Type == ElementType.Frame3D && e.Releases.HasAny))
         {
             if (element.Releases.StartMomentY && element.Releases.EndMomentY)
-                messages.Add(new ModelValidationMessage { Severity = "Warning", Message = $"Frame element {element.Id} has both My ends released; check for a mechanism." });
+                messages.Add(new ModelValidationMessage { Severity = "Warning", Message = $"Frame element {element.Id} has both My ends released; check for a mechanism.", ObjectType = SelectedModelObjectType.Element, ObjectId = element.Id });
             if (element.Releases.StartMomentZ && element.Releases.EndMomentZ)
-                messages.Add(new ModelValidationMessage { Severity = "Warning", Message = $"Frame element {element.Id} has both Mz ends released; check for a mechanism." });
+                messages.Add(new ModelValidationMessage { Severity = "Warning", Message = $"Frame element {element.Id} has both Mz ends released; check for a mechanism.", ObjectType = SelectedModelObjectType.Element, ObjectId = element.Id });
         }
 
         return messages;
@@ -406,6 +408,16 @@ public class StructuralSolver
     {
         double length = _nodes[element.StartNodeId].Position.DistanceTo(_nodes[element.EndNodeId].Position);
         var q = ResolveLoadVectorToLocal(element, load.ForcePerLength, load.Direction);
+        double a = Math.Clamp(load.StartRelativeDistance, 0, 1);
+        double b = Math.Clamp(load.EndRelativeDistance, 0, 1);
+        if (b < a)
+            (a, b) = (b, a);
+        if (b - a <= 1e-9)
+            return new double[12];
+
+        if (a > 1e-9 || b < 1.0 - 1e-9)
+            return BuildPartialDistributedLoadEquivalentLocal(length, q, a, b);
+
         var equivalent = new double[12];
 
         equivalent[0] = q.X * length / 2.0;
@@ -424,12 +436,34 @@ public class StructuralSolver
         return equivalent;
     }
 
+    private static double[] BuildPartialDistributedLoadEquivalentLocal(double length, Vector3D q, double start, double end)
+    {
+        var equivalent = new double[12];
+        const int segments = 16;
+        double range = end - start;
+        double segmentLength = length * range / segments;
+        for (int i = 0; i < segments; i++)
+        {
+            double xi = start + range * (i + 0.5) / segments;
+            var pointEquivalent = BuildPointLoadEquivalentLocal(length, xi, q.Scale(segmentLength), Vector3D.Zero);
+            for (int j = 0; j < equivalent.Length; j++)
+                equivalent[j] += pointEquivalent[j];
+        }
+
+        return equivalent;
+    }
+
     private double[] BuildPointLoadEquivalentLocal(StructuralElement element, MemberPointLoad load)
     {
         double length = _nodes[element.StartNodeId].Position.DistanceTo(_nodes[element.EndNodeId].Position);
         double xi = Math.Clamp(load.RelativeDistance, 0, 1);
         var p = ResolveLoadVectorToLocal(element, load.Force, load.Direction);
         var m = ResolveLoadVectorToLocal(element, load.Moment, load.Direction);
+        return BuildPointLoadEquivalentLocal(length, xi, p, m);
+    }
+
+    private static double[] BuildPointLoadEquivalentLocal(double length, double xi, Vector3D p, Vector3D m)
+    {
         var equivalent = new double[12];
 
         equivalent[0] = p.X * (1 - xi);
@@ -570,7 +604,7 @@ public class StructuralSolver
             DesignChecks = checks,
             Equilibrium = equilibrium,
             MaxDisplacement = nodeResults.Count == 0 ? 0 : nodeResults.Max(n => n.Displacement.Magnitude),
-            Diagnostics = BuildDiagnostics()
+            Diagnostics = BuildDiagnostics(equilibrium, nodeResults)
         };
     }
 
@@ -635,8 +669,30 @@ public class StructuralSolver
             {
                 Force = new Vector3D(localF[6], localF[7], localF[8]),
                 Moment = new Vector3D(localF[9], localF[10], localF[11])
-            }
+            },
+            StationResults = BuildStationResults(element.Id, localF)
         };
+    }
+
+    private static List<ElementStationResult> BuildStationResults(int elementId, double[] localF)
+    {
+        var stations = new List<ElementStationResult>();
+        foreach (double t in new[] { 0.0, 0.25, 0.5, 0.75, 1.0 })
+        {
+            stations.Add(new ElementStationResult
+            {
+                ElementId = elementId,
+                RelativePosition = t,
+                AxialForce = Lerp(localF[0], -localF[6], t),
+                ShearY = Lerp(localF[1], -localF[7], t),
+                ShearZ = Lerp(localF[2], -localF[8], t),
+                Torsion = Lerp(localF[3], -localF[9], t),
+                MomentY = Lerp(localF[4], -localF[10], t),
+                MomentZ = Lerp(localF[5], -localF[11], t)
+            });
+        }
+
+        return stations;
     }
 
     private IEnumerable<DesignCheckResult> RunDesignChecks(ElementForceResult forces, StructuralElement element)
@@ -793,7 +849,7 @@ public class StructuralSolver
         return new EquilibriumCheck(sumFx, sumFy, sumFz, Math.Max(1e-6, scale * 1e-9));
     }
 
-    private SolverDiagnostics BuildDiagnostics()
+    private SolverDiagnostics BuildDiagnostics(EquilibriumCheck equilibrium, IReadOnlyList<StructuralNodeResult> nodeResults)
     {
         int totalDof = _model.Nodes.Count * 6;
         int constrainedDof = _model.Nodes.Sum(n =>
@@ -804,6 +860,8 @@ public class StructuralSolver
             (n.ConstraintRY ? 1 : 0) +
             (n.ConstraintRZ ? 1 : 0));
         double density = totalDof == 0 ? 0 : (double)_lastNonZeroStiffnessEntries / (totalDof * totalDof);
+        double applied = _originalF.Sum(Math.Abs);
+        double reactions = nodeResults.Sum(n => n.ReactionForce.Magnitude + n.ReactionMoment.Magnitude);
 
         return new SolverDiagnostics
         {
@@ -813,6 +871,9 @@ public class StructuralSolver
             SolverName = _linearSolver.Name,
             DenseSolverWarning = totalDof > DenseSolverWarningDof,
             MatrixDensity = density,
+            AppliedLoadMagnitude = applied,
+            ReactionMagnitude = reactions,
+            EquilibriumResidualMagnitude = equilibrium.ResidualMagnitude,
             Notes = totalDof > DenseSolverWarningDof
                 ? "Dense solver path is active; use sparse solver for larger production models."
                 : "Dense solver path is active."
@@ -827,6 +888,8 @@ public class StructuralSolver
     }
 
     private int DofBase(int nodeId) => _nodeIndex[nodeId] * 6;
+
+    private static double Lerp(double a, double b, double t) => a + (b - a) * t;
 
     private static double[] Multiply(double[,] matrix, double[] vector)
     {
@@ -866,4 +929,11 @@ public class StructuralSolver
     }
 
     private static ModelValidationMessage Error(string message) => new() { Severity = "Error", Message = message };
+    private static ModelValidationMessage Error(string message, SelectedModelObjectType objectType, int objectId) => new()
+    {
+        Severity = "Error",
+        Message = message,
+        ObjectType = objectType,
+        ObjectId = objectId
+    };
 }

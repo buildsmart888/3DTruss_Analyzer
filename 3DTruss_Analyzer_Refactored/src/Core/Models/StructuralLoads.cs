@@ -46,4 +46,6 @@ public sealed class MemberDistributedLoad : LoadItem
     public int ElementId { get; init; }
     public Vector3D ForcePerLength { get; init; } = Vector3D.Zero;
     public LoadDirection Direction { get; init; } = LoadDirection.GlobalZ;
+    public double StartRelativeDistance { get; init; } = 0.0;
+    public double EndRelativeDistance { get; init; } = 1.0;
 }

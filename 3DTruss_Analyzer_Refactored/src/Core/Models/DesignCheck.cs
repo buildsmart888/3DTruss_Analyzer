@@ -30,4 +30,6 @@ public class ModelValidationMessage
 {
     public string Severity { get; init; } = "Info";
     public string Message { get; init; } = string.Empty;
+    public SelectedModelObjectType ObjectType { get; init; } = SelectedModelObjectType.None;
+    public int ObjectId { get; init; }
 }

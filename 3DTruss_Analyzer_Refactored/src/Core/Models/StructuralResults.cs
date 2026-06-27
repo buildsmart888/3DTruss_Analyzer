@@ -31,6 +31,9 @@ public class SolverDiagnostics
     public string SolverName { get; init; } = string.Empty;
     public bool DenseSolverWarning { get; init; }
     public double MatrixDensity { get; init; }
+    public double AppliedLoadMagnitude { get; init; }
+    public double ReactionMagnitude { get; init; }
+    public double EquilibriumResidualMagnitude { get; init; }
     public string Notes { get; init; } = string.Empty;
 }
 
@@ -56,6 +59,19 @@ public class ElementForceResult
     public double[] LocalEndForces { get; init; } = Array.Empty<double>();
     public ElementEndForceResult StartEndForces { get; init; } = new();
     public ElementEndForceResult EndEndForces { get; init; } = new();
+    public List<ElementStationResult> StationResults { get; init; } = new();
+}
+
+public class ElementStationResult
+{
+    public int ElementId { get; init; }
+    public double RelativePosition { get; init; }
+    public double AxialForce { get; init; }
+    public double ShearY { get; init; }
+    public double ShearZ { get; init; }
+    public double Torsion { get; init; }
+    public double MomentY { get; init; }
+    public double MomentZ { get; init; }
 }
 
 public enum DesignCheckStatus

@@ -25,6 +25,8 @@ public partial class MainForm : Form
     private DataGridView? dgvValidation;
     private DataGridView? dgvResults;
     private DataGridView? dgvForces;
+    private DataGridView? dgvStations;
+    private DataGridView? dgvDesignChecks;
     private HelixStructuralView? glView;
     private TabControl? mainTabs;
     private TreeView? objectTree;
@@ -34,6 +36,7 @@ public partial class MainForm : Form
     private TextBox? txtStatus;
     private StructuralModel? _structuralModel;
     private StructuralAnalysisResult? _structuralResult;
+    private bool _syncingSelection;
     
     public MainForm()
     {
@@ -138,6 +141,8 @@ public partial class MainForm : Form
         rightSplit.Panel1.Controls.Add(centerSplit);
 
         glView = new HelixStructuralView { Dock = DockStyle.Fill };
+        glView.ObjectSelected += (_, selection) => SelectModelObject(selection, updateViewer: false);
+        glView.ViewerCommandRequested += OnViewerCommandRequested;
         centerSplit.Panel1.Controls.Add(glView);
         
         mainTabs = new TabControl { Dock = DockStyle.Fill };
@@ -376,6 +381,8 @@ public partial class MainForm : Form
         dgvLoads.Columns.Add(new DataGridViewTextBoxColumn { Name = "NodeId", HeaderText = "Node" });
         dgvLoads.Columns.Add(new DataGridViewTextBoxColumn { Name = "ElementId", HeaderText = "Element" });
         dgvLoads.Columns.Add(new DataGridViewTextBoxColumn { Name = "RelativeDistance", HeaderText = "a/L" });
+        dgvLoads.Columns.Add(new DataGridViewTextBoxColumn { Name = "StartRelativeDistance", HeaderText = "Start a/L" });
+        dgvLoads.Columns.Add(new DataGridViewTextBoxColumn { Name = "EndRelativeDistance", HeaderText = "End a/L" });
         dgvLoads.Columns.Add(new DataGridViewComboBoxColumn { Name = "Direction", HeaderText = "Direction", DataSource = Enum.GetNames(typeof(LoadDirection)) });
         dgvLoads.Columns.Add(new DataGridViewTextBoxColumn { Name = "FX", HeaderText = "Fx or wx" });
         dgvLoads.Columns.Add(new DataGridViewTextBoxColumn { Name = "FY", HeaderText = "Fy or wy" });
@@ -411,6 +418,9 @@ public partial class MainForm : Form
         };
         dgvValidation.Columns.Add(new DataGridViewTextBoxColumn { Name = "Severity", HeaderText = "Severity" });
         dgvValidation.Columns.Add(new DataGridViewTextBoxColumn { Name = "Message", HeaderText = "Message" });
+        dgvValidation.Columns.Add(new DataGridViewTextBoxColumn { Name = "ObjectType", HeaderText = "Object Type", Visible = false });
+        dgvValidation.Columns.Add(new DataGridViewTextBoxColumn { Name = "ObjectId", HeaderText = "Object ID", Visible = false });
+        dgvValidation.CellDoubleClick += (_, e) => FocusValidationMessage(e.RowIndex);
         page.Controls.Add(dgvValidation);
         return page;
     }
@@ -457,8 +467,10 @@ public partial class MainForm : Form
         grpDisplacements.Controls.Add(dgvResults);
         splitContainer.Panel1.Controls.Add(grpDisplacements);
         
+        var resultTabs = new TabControl { Dock = DockStyle.Fill };
+
         // Element forces
-        var grpForces = new GroupBox { Text = "Element Forces & Stresses", Dock = DockStyle.Fill };
+        var forcesPage = new TabPage("Element Forces");
         dgvForces = new DataGridView
         {
             Dock = DockStyle.Fill,
@@ -476,9 +488,46 @@ public partial class MainForm : Form
         dgvForces.Columns.Add(new DataGridViewTextBoxColumn { Name = "Stress", HeaderText = "Stress (MPa)" });
         dgvForces.Columns.Add(new DataGridViewTextBoxColumn { Name = "Utilization", HeaderText = "Util." });
         dgvForces.Columns.Add(new DataGridViewTextBoxColumn { Name = "Status", HeaderText = "Status" });
-        
-        grpForces.Controls.Add(dgvForces);
-        splitContainer.Panel2.Controls.Add(grpForces);
+
+        forcesPage.Controls.Add(dgvForces);
+        resultTabs.TabPages.Add(forcesPage);
+
+        var stationsPage = new TabPage("Station Values");
+        dgvStations = new DataGridView
+        {
+            Dock = DockStyle.Fill,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+            ReadOnly = true
+        };
+        dgvStations.Columns.Add(new DataGridViewTextBoxColumn { Name = "ElementId", HeaderText = "Element" });
+        dgvStations.Columns.Add(new DataGridViewTextBoxColumn { Name = "Station", HeaderText = "Station a/L" });
+        dgvStations.Columns.Add(new DataGridViewTextBoxColumn { Name = "Axial", HeaderText = "Axial (N)" });
+        dgvStations.Columns.Add(new DataGridViewTextBoxColumn { Name = "ShearY", HeaderText = "Shear Y (N)" });
+        dgvStations.Columns.Add(new DataGridViewTextBoxColumn { Name = "ShearZ", HeaderText = "Shear Z (N)" });
+        dgvStations.Columns.Add(new DataGridViewTextBoxColumn { Name = "Torsion", HeaderText = "Torsion (N-m)" });
+        dgvStations.Columns.Add(new DataGridViewTextBoxColumn { Name = "MomentY", HeaderText = "Moment Y (N-m)" });
+        dgvStations.Columns.Add(new DataGridViewTextBoxColumn { Name = "MomentZ", HeaderText = "Moment Z (N-m)" });
+        stationsPage.Controls.Add(dgvStations);
+        resultTabs.TabPages.Add(stationsPage);
+
+        var checksPage = new TabPage("Design Checks");
+        dgvDesignChecks = new DataGridView
+        {
+            Dock = DockStyle.Fill,
+            AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.Fill,
+            ReadOnly = true
+        };
+        dgvDesignChecks.Columns.Add(new DataGridViewTextBoxColumn { Name = "ElementId", HeaderText = "Element" });
+        dgvDesignChecks.Columns.Add(new DataGridViewTextBoxColumn { Name = "CheckType", HeaderText = "Check" });
+        dgvDesignChecks.Columns.Add(new DataGridViewTextBoxColumn { Name = "Demand", HeaderText = "Demand" });
+        dgvDesignChecks.Columns.Add(new DataGridViewTextBoxColumn { Name = "Capacity", HeaderText = "Capacity" });
+        dgvDesignChecks.Columns.Add(new DataGridViewTextBoxColumn { Name = "Utilization", HeaderText = "Util." });
+        dgvDesignChecks.Columns.Add(new DataGridViewTextBoxColumn { Name = "Status", HeaderText = "Status" });
+        dgvDesignChecks.Columns.Add(new DataGridViewTextBoxColumn { Name = "Notes", HeaderText = "Notes" });
+        checksPage.Controls.Add(dgvDesignChecks);
+        resultTabs.TabPages.Add(checksPage);
+
+        splitContainer.Panel2.Controls.Add(resultTabs);
         
         tab.Controls.Add(splitContainer);
     }
@@ -497,7 +546,7 @@ public partial class MainForm : Form
         objectTree.AfterCheck -= ObjectTreeAfterCheck;
         objectTree.Nodes.Clear();
         var display = objectTree.Nodes.Add("Display Layers");
-        foreach (var layer in new[] { "Grid", "Nodes", "Elements", "Supports", "Loads", "Labels", "Local Axes", "Deformed Shape", "Diagrams" })
+        foreach (var layer in new[] { "Grid", "Nodes", "Elements", "Supports", "Loads", "Load Labels", "Reaction Labels", "Labels", "Local Axes", "Deformed Shape", "Diagrams" })
         {
             display.Nodes.Add(new TreeNode(layer) { Checked = true, Tag = $"Layer:{layer}" });
         }
@@ -553,8 +602,120 @@ public partial class MainForm : Form
         if (node?.Tag is not SelectedModelObject selection)
             return;
 
-        glView?.SelectObject(selection);
-        propertyGrid!.SelectedObject = ResolveSelectedObject(selection);
+        SelectModelObject(selection, updateViewer: true);
+    }
+
+    private void SelectModelObject(SelectedModelObject selection, bool updateViewer)
+    {
+        if (_syncingSelection)
+            return;
+
+        _syncingSelection = true;
+        try
+        {
+            if (updateViewer)
+                glView?.SelectObject(selection);
+            propertyGrid!.SelectedObject = ResolveSelectedObject(selection);
+            SelectTreeNode(selection);
+            SelectGridRow(selection);
+        }
+        finally
+        {
+            _syncingSelection = false;
+        }
+    }
+
+    private void SelectTreeNode(SelectedModelObject selection)
+    {
+        if (objectTree == null)
+            return;
+
+        var node = FindTreeNode(objectTree.Nodes, selection);
+        if (node != null)
+        {
+            objectTree.SelectedNode = node;
+            node.EnsureVisible();
+        }
+    }
+
+    private static TreeNode? FindTreeNode(TreeNodeCollection nodes, SelectedModelObject selection)
+    {
+        foreach (TreeNode node in nodes)
+        {
+            if (node.Tag is SelectedModelObject candidate &&
+                candidate.Type == selection.Type &&
+                candidate.Id == selection.Id &&
+                (selection.Type is not (SelectedModelObjectType.LoadCase or SelectedModelObjectType.LoadCombination) ||
+                    string.Equals(candidate.Name, selection.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                return node;
+            }
+
+            var child = FindTreeNode(node.Nodes, selection);
+            if (child != null)
+                return child;
+        }
+
+        return null;
+    }
+
+    private void SelectGridRow(SelectedModelObject selection)
+    {
+        DataGridView? grid = selection.Type switch
+        {
+            SelectedModelObjectType.Node => dgvNodes,
+            SelectedModelObjectType.Element => dgvElements,
+            SelectedModelObjectType.Material => dgvMaterials,
+            SelectedModelObjectType.Section => dgvSections,
+            _ => null
+        };
+        if (grid == null)
+            return;
+
+        foreach (DataGridViewRow row in grid.Rows)
+        {
+            if (row.IsNewRow)
+                continue;
+            if (TryReadInt(row, "Id", out int id) && id == selection.Id)
+            {
+                grid.ClearSelection();
+                row.Selected = true;
+                grid.CurrentCell = row.Cells[0];
+                mainTabs!.SelectedIndex = 0;
+                return;
+            }
+        }
+    }
+
+    private void OnViewerCommandRequested(object? sender, ViewerCommandRequestedEventArgs e)
+    {
+        switch (e.Command)
+        {
+            case "AddNode":
+                AddNode();
+                break;
+            case "AddFrameMember":
+                AddElementOfType(ElementType.Frame3D);
+                break;
+            case "AddTrussMember":
+                AddElementOfType(ElementType.Truss);
+                break;
+            case "AddNodalLoad":
+                AddNodalLoadFromSelection(e.Selection);
+                break;
+            case "AddMemberDistributedLoad":
+                AddMemberDistributedLoadFromSelection(e.Selection);
+                break;
+            case "Duplicate":
+                DuplicateSelection(e.Selection);
+                break;
+            case "Delete":
+                DeleteSelection(e.Selection);
+                break;
+            case "ShowProperties":
+                SelectModelObject(e.Selection, updateViewer: true);
+                break;
+        }
     }
 
     private object? ResolveSelectedObject(SelectedModelObject selection)
@@ -871,6 +1032,8 @@ public partial class MainForm : Form
                 );
             }
         }
+        dgvStations?.Rows.Clear();
+        dgvDesignChecks?.Rows.Clear();
         glView?.SetModel(_solver, result);
         
         mainTabs!.SelectedIndex = 1;
@@ -910,6 +1073,8 @@ public partial class MainForm : Form
         dgvElements?.Rows.Clear();
         dgvResults?.Rows.Clear();
         dgvForces?.Rows.Clear();
+        dgvStations?.Rows.Clear();
+        dgvDesignChecks?.Rows.Clear();
         glView?.SetModel(_solver, _solver.LastResult);
         PopulateObjectTree();
         UpdateStatus("New empty project created.");
@@ -988,15 +1153,15 @@ public partial class MainForm : Form
             switch (load)
             {
                 case NodalLoad nodal:
-                    dgvLoads?.Rows.Add("Nodal", nodal.LoadCaseId, nodal.NodeId, "", 0.5, LoadDirection.GlobalZ.ToString(),
+                    dgvLoads?.Rows.Add("Nodal", nodal.LoadCaseId, nodal.NodeId, "", 0.5, 0, 1, LoadDirection.GlobalZ.ToString(),
                         nodal.Force.X, nodal.Force.Y, nodal.Force.Z, nodal.Moment.X, nodal.Moment.Y, nodal.Moment.Z);
                     break;
                 case MemberPointLoad point:
-                    dgvLoads?.Rows.Add("MemberPoint", point.LoadCaseId, "", point.ElementId, point.RelativeDistance, point.Direction.ToString(),
+                    dgvLoads?.Rows.Add("MemberPoint", point.LoadCaseId, "", point.ElementId, point.RelativeDistance, 0, 1, point.Direction.ToString(),
                         point.Force.X, point.Force.Y, point.Force.Z, point.Moment.X, point.Moment.Y, point.Moment.Z);
                     break;
                 case MemberDistributedLoad distributed:
-                    dgvLoads?.Rows.Add("MemberDistributed", distributed.LoadCaseId, "", distributed.ElementId, 0.5, distributed.Direction.ToString(),
+                    dgvLoads?.Rows.Add("MemberDistributed", distributed.LoadCaseId, "", distributed.ElementId, 0.5, distributed.StartRelativeDistance, distributed.EndRelativeDistance, distributed.Direction.ToString(),
                         distributed.ForcePerLength.X, distributed.ForcePerLength.Y, distributed.ForcePerLength.Z, 0, 0, 0);
                     break;
             }
@@ -1058,6 +1223,42 @@ public partial class MainForm : Form
                     (maxCheck?.Utilization ?? 0).ToString("F3"),
                     maxCheck?.Status.ToString() ?? "N/A"
                 );
+            }
+        }
+
+        if (dgvStations != null)
+        {
+            dgvStations.Rows.Clear();
+            foreach (var station in result.ElementResults.SelectMany(e => e.StationResults))
+            {
+                dgvStations.Rows.Add(
+                    station.ElementId,
+                    station.RelativePosition.ToString("F2"),
+                    station.AxialForce.ToString("F2"),
+                    station.ShearY.ToString("F2"),
+                    station.ShearZ.ToString("F2"),
+                    station.Torsion.ToString("F2"),
+                    station.MomentY.ToString("F2"),
+                    station.MomentZ.ToString("F2"));
+            }
+        }
+
+        if (dgvDesignChecks != null)
+        {
+            dgvDesignChecks.Rows.Clear();
+            foreach (var check in result.DesignChecks)
+            {
+                int rowIndex = dgvDesignChecks.Rows.Add(
+                    check.ElementId,
+                    check.CheckType,
+                    check.Demand.ToString("E4"),
+                    check.Capacity.ToString("E4"),
+                    check.Utilization.ToString("F3"),
+                    check.Status.ToString(),
+                    check.Notes);
+                dgvDesignChecks.Rows[rowIndex].DefaultCellStyle.BackColor = check.Status == DesignCheckStatus.NG
+                    ? Color.MistyRose
+                    : check.Status == DesignCheckStatus.MissingData ? Color.LemonChiffon : Color.White;
             }
         }
 
@@ -1144,6 +1345,9 @@ public partial class MainForm : Form
         writer.WriteLine($"Constrained DOF: {result.Diagnostics.ConstrainedDof}");
         writer.WriteLine($"Solver: {result.Diagnostics.SolverName}");
         writer.WriteLine($"Matrix density: {result.Diagnostics.MatrixDensity:F4}");
+        writer.WriteLine($"Applied load magnitude: {result.Diagnostics.AppliedLoadMagnitude:E4}");
+        writer.WriteLine($"Reaction magnitude: {result.Diagnostics.ReactionMagnitude:E4}");
+        writer.WriteLine($"Equilibrium residual magnitude: {result.Diagnostics.EquilibriumResidualMagnitude:E4}");
         writer.WriteLine(result.Diagnostics.Notes);
         writer.WriteLine("Design checks are preliminary MVP checks, not final code-compliant design.");
         writer.WriteLine();
@@ -1179,6 +1383,13 @@ public partial class MainForm : Form
         foreach (var e in result.ElementResults)
         {
             writer.WriteLine($"{e.ElementId},{e.AxialForce:F2},{e.ShearY:F2},{e.ShearZ:F2},{e.Torsion:F2},{e.MomentY:F2},{e.MomentZ:F2},{e.Stress / 1e6:F3}");
+        }
+        writer.WriteLine();
+        writer.WriteLine("Element Stations");
+        writer.WriteLine("Element,Station,Axial_N,ShearY_N,ShearZ_N,Torsion_Nm,MomentY_Nm,MomentZ_Nm");
+        foreach (var station in result.ElementResults.SelectMany(e => e.StationResults))
+        {
+            writer.WriteLine($"{station.ElementId},{station.RelativePosition:F2},{station.AxialForce:F2},{station.ShearY:F2},{station.ShearZ:F2},{station.Torsion:F2},{station.MomentY:F2},{station.MomentZ:F2}");
         }
         writer.WriteLine();
         writer.WriteLine("Element,Check,Demand,Capacity,Utilization,Status,Notes");
@@ -1249,13 +1460,121 @@ public partial class MainForm : Form
     
     private void AddElement()
     {
+        AddElementOfType(ElementType.Frame3D);
+    }
+
+    private void AddElementOfType(ElementType type)
+    {
         if (dgvElements == null || dgvNodes == null) return;
         int nextId = GetNextGridId(dgvElements);
         var nodeRows = dgvNodes.Rows.Cast<DataGridViewRow>().Where(r => !r.IsNewRow && !IsEmptyRow(r)).ToList();
         int startNode = nodeRows.Count > 0 ? Convert.ToInt32(nodeRows[0].Cells["Id"].Value, CultureInfo.InvariantCulture) : 1;
         int endNode = nodeRows.Count > 1 ? Convert.ToInt32(nodeRows[1].Cells["Id"].Value, CultureInfo.InvariantCulture) : startNode;
-        dgvElements.Rows.Add(nextId, ElementType.Frame3D.ToString(), 1, 1, startNode, endNode, 0.001, 1e-6, 1e-6, 5e-7, 200e9, 7850, MaterialType.Steel.ToString(), 250e6, 0, false, false, false, false);
-        UpdateStatus($"Added element {nextId}. Edit connectivity and properties in the grid.");
+        dgvElements.Rows.Add(nextId, type.ToString(), 1, 1, startNode, endNode, 0.001, 1e-6, 1e-6, 5e-7, 200e9, 7850, MaterialType.Steel.ToString(), 250e6, 0, false, false, false, false);
+        SelectGridRow(new SelectedModelObject { Type = SelectedModelObjectType.Element, Id = nextId, Name = $"Element {nextId}" });
+        UpdateStatus($"Added {type} element {nextId}. Edit connectivity and properties in the grid.");
+    }
+
+    private void AddNodalLoadFromSelection(SelectedModelObject selection)
+    {
+        if (dgvLoads == null)
+            return;
+
+        int nodeId = selection.Type == SelectedModelObjectType.Node ? selection.Id : GetFirstGridId(dgvNodes);
+        string caseId = GetActiveCaseId();
+        dgvLoads.Rows.Add("Nodal", caseId, nodeId, "", 0.5, 0, 1, LoadDirection.GlobalZ.ToString(), 0, 0, -1000, 0, 0, 0);
+        mainTabs!.SelectedIndex = 0;
+        UpdateStatus($"Added nodal load on node {nodeId} in load case {caseId}.");
+    }
+
+    private void AddMemberDistributedLoadFromSelection(SelectedModelObject selection)
+    {
+        if (dgvLoads == null)
+            return;
+
+        int elementId = selection.Type == SelectedModelObjectType.Element ? selection.Id : GetFirstGridId(dgvElements);
+        string caseId = GetActiveCaseId();
+        dgvLoads.Rows.Add("MemberDistributed", caseId, "", elementId, 0.5, 0, 1, LoadDirection.GlobalZ.ToString(), 0, 0, -1000, 0, 0, 0);
+        mainTabs!.SelectedIndex = 0;
+        UpdateStatus($"Added distributed load on element {elementId} in load case {caseId}.");
+    }
+
+    private void DuplicateSelection(SelectedModelObject selection)
+    {
+        var grid = selection.Type switch
+        {
+            SelectedModelObjectType.Node => dgvNodes,
+            SelectedModelObjectType.Element => dgvElements,
+            _ => null
+        };
+        if (grid == null)
+            return;
+
+        var source = FindGridRowById(grid, selection.Id);
+        if (source == null)
+            return;
+
+        int nextId = GetNextGridId(grid);
+        object?[] values = source.Cells.Cast<DataGridViewCell>().Select(c => c.Value).ToArray();
+        values[0] = nextId;
+        grid.Rows.Add(values);
+        SelectGridRow(new SelectedModelObject { Type = selection.Type, Id = nextId, Name = selection.Name });
+        UpdateStatus($"Duplicated {selection.Type} {selection.Id} to {nextId}.");
+    }
+
+    private void DeleteSelection(SelectedModelObject selection)
+    {
+        var grid = selection.Type switch
+        {
+            SelectedModelObjectType.Node => dgvNodes,
+            SelectedModelObjectType.Element => dgvElements,
+            SelectedModelObjectType.Material => dgvMaterials,
+            SelectedModelObjectType.Section => dgvSections,
+            _ => null
+        };
+        if (grid == null)
+            return;
+
+        var row = FindGridRowById(grid, selection.Id);
+        if (row == null)
+            return;
+
+        grid.Rows.Remove(row);
+        _structuralModel = BuildStructuralModelFromGrids();
+        PopulateObjectTree();
+        glView?.SetModel(_structuralModel, _structuralResult);
+        UpdateStatus($"Deleted {selection.Type} {selection.Id}.");
+    }
+
+    private string GetActiveCaseId()
+    {
+        string selected = Convert.ToString(activeLoadCaseCombo?.SelectedItem, CultureInfo.InvariantCulture) ?? string.Empty;
+        return string.IsNullOrWhiteSpace(selected) || selected == "Default" ? "DEAD" : selected;
+    }
+
+    private static int GetFirstGridId(DataGridView? grid)
+    {
+        if (grid == null)
+            return 1;
+
+        foreach (DataGridViewRow row in grid.Rows)
+        {
+            if (!row.IsNewRow && TryReadInt(row, "Id", out int id))
+                return id;
+        }
+
+        return 1;
+    }
+
+    private static DataGridViewRow? FindGridRowById(DataGridView grid, int id)
+    {
+        foreach (DataGridViewRow row in grid.Rows)
+        {
+            if (!row.IsNewRow && TryReadInt(row, "Id", out int rowId) && rowId == id)
+                return row;
+        }
+
+        return null;
     }
 
     private bool ValidateCurrentModel(bool showDialog)
@@ -1295,12 +1614,28 @@ public partial class MainForm : Form
         dgvValidation.Rows.Clear();
         foreach (var message in messages)
         {
-            int rowIndex = dgvValidation.Rows.Add(message.Severity, message.Message);
+            int rowIndex = dgvValidation.Rows.Add(message.Severity, message.Message, message.ObjectType.ToString(), message.ObjectId);
             var row = dgvValidation.Rows[rowIndex];
             row.DefaultCellStyle.BackColor = message.Severity == "Error"
                 ? Color.MistyRose
                 : message.Severity == "Warning" ? Color.LemonChiffon : Color.White;
         }
+    }
+
+    private void FocusValidationMessage(int rowIndex)
+    {
+        if (dgvValidation == null || rowIndex < 0 || rowIndex >= dgvValidation.Rows.Count)
+            return;
+
+        var row = dgvValidation.Rows[rowIndex];
+        if (!Enum.TryParse<SelectedModelObjectType>(Convert.ToString(row.Cells["ObjectType"].Value, CultureInfo.InvariantCulture), out var type) ||
+            type == SelectedModelObjectType.None)
+        {
+            return;
+        }
+
+        int id = (int)ReadDoubleOrDefault(row, "ObjectId");
+        SelectModelObject(new SelectedModelObject { Type = type, Id = id, Name = $"{type} {id}" }, updateViewer: true);
     }
 
     private TrussSolver BuildSolverFromGrids()
@@ -1559,7 +1894,9 @@ public partial class MainForm : Form
                     LoadCaseId = caseId,
                     ElementId = (int)ReadDoubleOrDefault(row, "ElementId"),
                     Direction = direction,
-                    ForcePerLength = force
+                    ForcePerLength = force,
+                    StartRelativeDistance = ReadDoubleOrDefault(row, "StartRelativeDistance", 0.0),
+                    EndRelativeDistance = ReadDoubleOrDefault(row, "EndRelativeDistance", 1.0)
                 });
             }
         }
@@ -1620,6 +1957,16 @@ public partial class MainForm : Form
         return double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out double value)
             ? value
             : defaultValue;
+    }
+
+    private static bool TryReadInt(DataGridViewRow row, string columnName, out int value)
+    {
+        value = 0;
+        if (row.DataGridView == null || !row.DataGridView.Columns.Contains(columnName))
+            return false;
+
+        string? text = Convert.ToString(row.Cells[columnName].Value, CultureInfo.InvariantCulture);
+        return int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
     }
 
     private static bool ReadBool(DataGridViewRow row, string columnName)

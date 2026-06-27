@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 2,
+  "nodes": [
+    { "id": 1, "x": 0, "y": 0, "z": 0, "fixUx": true, "fixUy": true, "fixUz": true, "fixRx": true, "fixRy": true, "fixRz": true },
+    { "id": 2, "x": 5, "y": 0, "z": 0, "fixUx": true, "fixUy": true, "fixUz": true, "fixRx": true, "fixRy": true, "fixRz": true },
+    { "id": 3, "x": 0, "y": 0, "z": 3 },
+    { "id": 4, "x": 5, "y": 0, "z": 3 }
+  ],
+  "materials": [
+    { "id": 1, "name": "Structural Steel", "type": "Steel", "youngsModulus": 200000000000, "poissonsRatio": 0.3, "density": 7850, "yieldStrength": 250000000 }
+  ],
+  "sections": [
+    { "id": 1, "name": "Column/Beam", "type": "Generic", "area": 0.004, "iy": 0.00001, "iz": 0.000012, "j": 0.000003, "width": 0.22, "depth": 0.35 }
+  ],
+  "elements": [
+    { "id": 1, "type": "Frame3D", "startNodeId": 1, "endNodeId": 3, "materialId": 1, "sectionId": 1 },
+    { "id": 2, "type": "Frame3D", "startNodeId": 2, "endNodeId": 4, "materialId": 1, "sectionId": 1 },
+    { "id": 3, "type": "Frame3D", "startNodeId": 3, "endNodeId": 4, "materialId": 1, "sectionId": 1 }
+  ],
+  "loadCases": [{ "caseId": "LL", "name": "Live Load", "type": 0, "includeSelfWeight": false, "loadFactor": 1.0 }],
+  "loadCombinations": [],
+  "loads": [
+    { "kind": "Nodal", "loadCaseId": "LL", "nodeId": 3, "fx": 2000, "fy": 0, "fz": -5000, "mx": 0, "my": 0, "mz": 0, "elementId": 0, "relativeDistance": 0, "wx": 0, "wy": 0, "wz": 0, "direction": "" },
+    { "kind": "Nodal", "loadCaseId": "LL", "nodeId": 4, "fx": 2000, "fy": 0, "fz": -5000, "mx": 0, "my": 0, "mz": 0, "elementId": 0, "relativeDistance": 0, "wx": 0, "wy": 0, "wz": 0, "direction": "" }
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 2,
+  "nodes": [
+    { "id": 1, "x": 0, "y": 0, "z": 0, "fixUx": true, "fixUy": true, "fixUz": true, "fixRx": true, "fixRy": true, "fixRz": true },
+    { "id": 2, "x": 5, "y": 0, "z": 0, "fixUx": true, "fixUy": true, "fixUz": true, "fixRx": true, "fixRy": true, "fixRz": true },
+    { "id": 3, "x": 0, "y": 0, "z": 3 },
+    { "id": 4, "x": 5, "y": 0, "z": 3, "fy": -6000 }
+  ],
+  "materials": [
+    { "id": 1, "name": "Structural Steel", "type": "Steel", "youngsModulus": 200000000000, "poissonsRatio": 0.3, "density": 7850, "yieldStrength": 250000000 },
+    { "id": 2, "name": "Concrete 30 MPa", "type": "Concrete", "youngsModulus": 25000000000, "poissonsRatio": 0.2, "density": 2400, "yieldStrength": 420000000, "concreteCompressiveStrength": 30000000 }
+  ],
+  "sections": [
+    { "id": 1, "name": "Steel Beam", "type": "Generic", "area": 0.004, "iy": 0.000008, "iz": 0.000012, "j": 0.000003, "width": 0.2, "depth": 0.35 },
+    { "id": 2, "name": "RC Column", "type": "RC_Rectangular", "area": 0.16, "iy": 0.002133, "iz": 0.002133, "j": 0.004266, "width": 0.4, "depth": 0.4, "rebarArea": 0.001, "effectiveDepth": 0.35 }
+  ],
+  "elements": [
+    { "id": 1, "type": "Frame3D", "startNodeId": 1, "endNodeId": 3, "materialId": 2, "sectionId": 2 },
+    { "id": 2, "type": "Frame3D", "startNodeId": 2, "endNodeId": 4, "materialId": 2, "sectionId": 2 },
+    { "id": 3, "type": "Frame3D", "startNodeId": 3, "endNodeId": 4, "materialId": 1, "sectionId": 1, "rollAngleRadians": 0.0 }
+  ],
+  "loadCases": [],
+  "loadCombinations": [],
+  "loads": []
+}

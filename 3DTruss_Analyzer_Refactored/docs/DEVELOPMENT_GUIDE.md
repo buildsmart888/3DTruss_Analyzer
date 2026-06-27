@@ -1,83 +1,75 @@
 # Development Guide
 
-## Project Structure
+## Architecture
 
-```text
-3DTruss_Analyzer_Refactored/
-├── src/
-│   ├── Core/                 # FEM/direct stiffness solver
-│   │   ├── Models/           # Node, Element, Material, LoadCase
-│   │   ├── IO/               # JSON/CSV import and export
-│   │   ├── Reporting/        # Basic report generation
-│   │   ├── Utilities/        # Matrix operations
-│   │   └── TrussSolver.cs
-│   └── UI/WinForms/          # Desktop UI
-├── tests/                    # Unit and integration tests
-├── docs/                     # Documentation
-├── examples/                 # Example models
-└── TrussAnalyzer.sln
-```
+The project now has two supported analysis layers:
 
-## Getting Started
+- `TrussSolver`: legacy compatibility facade for axial-only truss analysis and existing examples/tests.
+- `StructuralSolver`: MVP 3D structural solver for `StructuralModel`, including truss and 3D frame elements.
 
-Prerequisites:
+Keep new features on the `StructuralModel` path unless the change is explicitly about legacy truss compatibility.
 
-- .NET 8 SDK or later
-- Visual Studio 2022, VS Code, or Rider
+## Core Pipeline
 
-Build and test:
+`StructuralSolver` follows this order:
 
-```bash
-dotnet build TrussAnalyzer.sln
-dotnet test TrussAnalyzer.sln
-```
-
-Run the UI:
-
-```bash
-dotnet run --project src/UI/WinForms/TrussAnalyzer.UI.csproj
-```
+1. Model validation.
+2. Node and element lookup.
+3. DOF numbering with 6 DOF per node: UX, UY, UZ, RX, RY, RZ.
+4. Global stiffness assembly.
+5. Load vector assembly.
+6. Boundary condition application.
+7. Dense solve through `Matrix.SolveAuto()`.
+8. Reaction recovery from the original stiffness matrix and force vector.
+9. Element force recovery.
+10. Solver diagnostics and preliminary design/safety checks.
 
 ## Engineering Assumptions
 
 - Units are SI: m, N, Pa, kg/m3.
-- Members are pin-jointed truss elements that carry axial force only.
 - Analysis is linear elastic and small displacement.
-- A node has three translational DOFs: X, Y, Z.
-- 2D models must explicitly constrain out-of-plane Z DOFs.
-- Self-weight is included only through a `LoadCase` with `IncludeSelfWeight = true`.
+- Truss elements are pin-jointed axial-only members.
+- Frame elements are MVP 3D Euler-Bernoulli beam-column elements.
+- Self-weight is based on material density, section area, member length, and gravity.
+- Load combinations use load case factors and include self-weight when a referenced load case has `IncludeSelfWeight = true`.
+- Frame members can use local roll angle and simple end moment releases about local Y/Z.
 
 ## Known Limitations
 
-- No bending, shear, moment releases, frame elements, or plate/shell elements.
-- No nonlinear geometry, buckling, plasticity, or dynamic analysis.
-- No AISC/ASCE design-code safety checks yet.
-- The WinForms UI is a functional baseline; advanced model editing and real 3D visualization are future work.
-- The WinForms UI supports grid editing, validation, and a basic projected structure view.
-- The PDF generator is intentionally minimal and should not be treated as a full report-layout engine.
-- Safety checks are basic stress/yield utilization checks, not code-compliant design checks.
-- The current `Matrix.SolveAuto` path still uses dense Gaussian elimination; sparse solver work is future optimization.
+- No shell, slab, wall, plate, solid, cable, nonlinear concrete cracking, plastic hinge, P-Delta, dynamic, modal, or seismic response spectrum analysis.
+- No automatic code wind/seismic load generator.
+- No rigid offsets, shear deformation, warping torsion, true sparse storage, or nonlinear release behavior yet.
+- Distributed and point member loads are converted through equivalent nodal loads and recovered as fixed-end force effects.
+- Preliminary design checks are not final AISC/ACI code checks.
+- The OpenGL viewer uses immediate-mode drawing for MVP simplicity.
+- The dense matrix solver is fine for small models; `ILinearSystemSolver` allows replacement, but the sparse implementation is currently a placeholder.
 
-## Coding Standards
+## UI Notes
 
-- Use PascalCase for public types, methods, and properties.
-- Use `_camelCase` for private fields.
-- Include units in XML comments for physical quantities.
-- Keep Core independent from UI.
-- Prefer explicit exceptions over silent fallback for invalid engineering input.
+- The WinForms editor uses tabs for geometry, materials, sections, loads, combinations, and validation.
+- Element rows can be set to `Truss` or `Frame3D`.
+- Element rows reference material and section IDs, with inline fallback values for quick entry.
+- The OpenTK/OpenGL viewer supports left-drag rotation, wheel zoom, labels, load/support glyphs, local axes, view presets, color modes, and deformed-shape display.
 
 ## Testing Expectations
 
 Core changes should include focused tests for:
 
-- Matrix solve behavior
-- Model validation
-- Nodal load analysis
-- Self-weight analysis
-- Reactions and equilibrium residuals
-- Load cases and load combinations
-- JSON import/export round trips
-- Safety utilization and validation messages
+- Matrix solve behavior.
+- Model validation.
+- Truss compatibility.
+- Frame cantilever benchmark displacement.
+- Axial frame behavior.
+- Nodal moment loads.
+- Member distributed loads.
+- Member point loads and fixed-end force recovery.
+- Local axis roll and frame release validation.
+- Self-weight.
+- Load combinations.
+- Section property creation.
+- Preliminary steel/RC design checks.
+- Schema v1 and schema v2 JSON import/export.
+- Solver diagnostics and report/export content.
 
 Before handing off a change, run:
 
@@ -90,18 +82,15 @@ dotnet test TrussAnalyzer.sln
 
 Singular matrix errors usually mean:
 
-- Missing supports
-- Unconstrained out-of-plane DOFs in a 2D model
-- A mechanism caused by insufficient triangulation
-- Zero-length or disconnected elements
+- Missing supports.
+- Unconstrained rotational DOFs.
+- A truss-only mechanism.
+- Zero-length or disconnected elements.
+- A frame element missing positive A, Iy, Iz, or J.
 
 Unexpected reactions usually mean:
 
-- Loads were applied in a different load case than expected
-- Self-weight was included or omitted unintentionally
-- Boundary conditions do not match the intended support model
-
-Large-model warnings mean:
-
-- The model can still run, but dense matrix memory/time may grow quickly.
-- Consider reducing the model size or implementing a sparse solver before production use on large structures.
+- Loads were applied to a different load case than expected.
+- Self-weight was included or omitted unintentionally.
+- Support constraints do not match the intended model.
+- A member load was entered in global direction but expected to be local.

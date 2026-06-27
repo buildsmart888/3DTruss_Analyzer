@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 2,
+  "nodes": [
+    { "id": 1, "x": 0, "y": 0, "z": 0, "fixUx": true, "fixUy": true, "fixUz": true, "fixRx": true, "fixRy": true, "fixRz": true },
+    { "id": 2, "x": 4, "y": 0, "z": 0, "fixUx": true, "fixUy": true, "fixUz": true, "fixRx": true, "fixRy": true, "fixRz": true },
+    { "id": 3, "x": 0, "y": 0, "z": 3 },
+    { "id": 4, "x": 4, "y": 0, "z": 3 }
+  ],
+  "materials": [
+    { "id": 1, "name": "Concrete 30 MPa", "type": "Concrete", "youngsModulus": 25000000000, "poissonsRatio": 0.2, "density": 2400, "yieldStrength": 420000000, "concreteCompressiveStrength": 30000000 }
+  ],
+  "sections": [
+    { "id": 1, "name": "RC 300x500", "type": "RC_Rectangular", "area": 0.15, "iy": 0.001125, "iz": 0.003125, "j": 0.00425, "width": 0.3, "depth": 0.5, "rebarArea": 0.0008, "effectiveDepth": 0.45 }
+  ],
+  "elements": [
+    { "id": 1, "type": "Frame3D", "startNodeId": 1, "endNodeId": 3, "materialId": 1, "sectionId": 1 },
+    { "id": 2, "type": "Frame3D", "startNodeId": 2, "endNodeId": 4, "materialId": 1, "sectionId": 1 },
+    { "id": 3, "type": "Frame3D", "startNodeId": 3, "endNodeId": 4, "materialId": 1, "sectionId": 1 }
+  ],
+  "loadCases": [{ "caseId": "DL", "name": "Dead Load", "type": 0, "includeSelfWeight": true, "loadFactor": 1.0 }],
+  "loadCombinations": [],
+  "loads": []
+}

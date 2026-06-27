@@ -14,6 +14,350 @@ using TrussAnalyzer.Core.Models;
 /// </summary>
 public static class StructureImporterExporter
 {
+    public static string ExportStructuralModelToJson(StructuralModel model)
+    {
+        var data = new
+        {
+            schemaVersion = 2,
+            coordinateSystem = model.CoordinateSystem.ToString(),
+            displaySettings = model.DisplaySettings,
+            activeLoadCaseId = model.ActiveLoadCaseId,
+            nodes = model.Nodes.Select(n => new
+            {
+                n.Id,
+                x = n.Position.X,
+                y = n.Position.Y,
+                z = n.Position.Z,
+                fixUx = n.ConstraintX,
+                fixUy = n.ConstraintY,
+                fixUz = n.ConstraintZ,
+                fixRx = n.ConstraintRX,
+                fixRy = n.ConstraintRY,
+                fixRz = n.ConstraintRZ,
+                fx = n.AppliedForce.X,
+                fy = n.AppliedForce.Y,
+                fz = n.AppliedForce.Z,
+                mx = n.AppliedMoment.X,
+                my = n.AppliedMoment.Y,
+                mz = n.AppliedMoment.Z
+            }),
+            materials = model.Materials.Select(m => new
+            {
+                m.Id,
+                m.Name,
+                type = m.Type.ToString(),
+                m.YoungsModulus,
+                m.ShearModulus,
+                m.PoissonsRatio,
+                m.Density,
+                m.YieldStrength,
+                m.UltimateStrength,
+                m.ConcreteCompressiveStrength
+            }),
+            sections = model.Sections.Select(s => new
+            {
+                s.Id,
+                s.Name,
+                type = s.Type.ToString(),
+                s.Area,
+                s.Iy,
+                s.Iz,
+                s.J,
+                s.Depth,
+                s.Width,
+                s.Thickness,
+                s.Diameter,
+                s.RebarArea,
+                s.EffectiveDepth
+            }),
+            elements = model.Elements.Select(e => new
+            {
+                e.Id,
+                type = e.Type.ToString(),
+                startNodeId = e.StartNodeId,
+                endNodeId = e.EndNodeId,
+                materialId = e.MaterialId,
+                sectionId = e.SectionId,
+                rollAngleRadians = e.RollAngleRadians,
+                releases = new
+                {
+                    e.Releases.StartMomentY,
+                    e.Releases.StartMomentZ,
+                    e.Releases.EndMomentY,
+                    e.Releases.EndMomentZ
+                }
+            }),
+            loadCases = model.LoadCases,
+            loadCombinations = model.LoadCombinations,
+            designSettings = model.DesignSettings,
+            loads = model.Loads.Select(l => l switch
+            {
+                NodalLoad n => new
+                {
+                    kind = "Nodal",
+                    n.LoadCaseId,
+                    nodeId = n.NodeId,
+                    fx = n.Force.X,
+                    fy = n.Force.Y,
+                    fz = n.Force.Z,
+                    mx = n.Moment.X,
+                    my = n.Moment.Y,
+                    mz = n.Moment.Z,
+                    elementId = 0,
+                    relativeDistance = 0.0,
+                    wx = 0.0,
+                    wy = 0.0,
+                    wz = 0.0,
+                    direction = ""
+                },
+                MemberPointLoad p => new
+                {
+                    kind = "MemberPoint",
+                    p.LoadCaseId,
+                    nodeId = 0,
+                    fx = p.Force.X,
+                    fy = p.Force.Y,
+                    fz = p.Force.Z,
+                    mx = p.Moment.X,
+                    my = p.Moment.Y,
+                    mz = p.Moment.Z,
+                    elementId = p.ElementId,
+                    relativeDistance = p.RelativeDistance,
+                    wx = 0.0,
+                    wy = 0.0,
+                    wz = 0.0,
+                    direction = p.Direction.ToString()
+                },
+                MemberDistributedLoad d => new
+                {
+                    kind = "MemberDistributed",
+                    d.LoadCaseId,
+                    nodeId = 0,
+                    fx = 0.0,
+                    fy = 0.0,
+                    fz = 0.0,
+                    mx = 0.0,
+                    my = 0.0,
+                    mz = 0.0,
+                    elementId = d.ElementId,
+                    relativeDistance = 0.0,
+                    wx = d.ForcePerLength.X,
+                    wy = d.ForcePerLength.Y,
+                    wz = d.ForcePerLength.Z,
+                    direction = d.Direction.ToString()
+                },
+                _ => throw new NotSupportedException($"Unsupported load item type {l.GetType().Name}.")
+            })
+        };
+
+        return JsonSerializer.Serialize(data, new JsonSerializerOptions
+        {
+            WriteIndented = true,
+            Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        });
+    }
+
+    public static StructuralModel ImportStructuralModelFromJson(string jsonContent)
+    {
+        using var doc = JsonDocument.Parse(jsonContent);
+        var root = doc.RootElement;
+        int schemaVersion = TryGetPropertyCaseInsensitive(root, "schemaVersion", out var version)
+            ? version.GetInt32()
+            : 1;
+
+        if (schemaVersion < 2)
+            return StructuralModel.FromTrussSolver(ImportFromJson(jsonContent));
+
+        var model = new StructuralModel();
+        if (TryGetPropertyCaseInsensitive(root, "coordinateSystem", out var coordinateElem) &&
+            Enum.TryParse<CoordinateConvention>(coordinateElem.GetString(), ignoreCase: true, out var coordinate))
+        {
+            model.CoordinateSystem = coordinate;
+        }
+
+        if (TryGetPropertyCaseInsensitive(root, "displaySettings", out var displayElem))
+        {
+            var display = JsonSerializer.Deserialize<ViewerDisplayOptions>(displayElem.GetRawText());
+            if (display != null)
+                model.DisplaySettings = display;
+        }
+
+        if (TryGetPropertyCaseInsensitive(root, "activeLoadCaseId", out var activeLoadCaseElem))
+            model.ActiveLoadCaseId = activeLoadCaseElem.GetString() ?? string.Empty;
+
+        if (TryGetPropertyCaseInsensitive(root, "nodes", out var nodesElem))
+        {
+            foreach (var n in nodesElem.EnumerateArray())
+            {
+                var node = new Node(GetPropertyCaseInsensitive(n, "id").GetInt32(), new Point3D(
+                    GetDoubleOrDefault(n, "x"),
+                    GetDoubleOrDefault(n, "y"),
+                    GetDoubleOrDefault(n, "z")))
+                {
+                    ConstraintX = GetBoolOrDefault(n, "fixUx"),
+                    ConstraintY = GetBoolOrDefault(n, "fixUy"),
+                    ConstraintZ = GetBoolOrDefault(n, "fixUz"),
+                    ConstraintRX = GetBoolOrDefault(n, "fixRx"),
+                    ConstraintRY = GetBoolOrDefault(n, "fixRy"),
+                    ConstraintRZ = GetBoolOrDefault(n, "fixRz")
+                };
+                node.ApplyForce(GetDoubleOrDefault(n, "fx"), GetDoubleOrDefault(n, "fy"), GetDoubleOrDefault(n, "fz"));
+                node.ApplyMoment(GetDoubleOrDefault(n, "mx"), GetDoubleOrDefault(n, "my"), GetDoubleOrDefault(n, "mz"));
+                model.Nodes.Add(node);
+            }
+        }
+
+        if (TryGetPropertyCaseInsensitive(root, "materials", out var materialsElem))
+        {
+            foreach (var m in materialsElem.EnumerateArray())
+            {
+                model.Materials.Add(new Material
+                {
+                    Id = GetPropertyCaseInsensitive(m, "id").GetInt32(),
+                    Name = GetStringOrDefault(m, "name", "Material"),
+                    Type = Enum.Parse<MaterialType>(GetStringOrDefault(m, "type", "Custom"), ignoreCase: true),
+                    YoungsModulus = GetDoubleOrDefault(m, "youngsModulus"),
+                    ShearModulus = GetDoubleOrDefault(m, "shearModulus"),
+                    PoissonsRatio = GetDoubleOrDefault(m, "poissonsRatio"),
+                    Density = GetDoubleOrDefault(m, "density"),
+                    YieldStrength = GetDoubleOrDefault(m, "yieldStrength"),
+                    UltimateStrength = GetDoubleOrDefault(m, "ultimateStrength"),
+                    ConcreteCompressiveStrength = GetDoubleOrDefault(m, "concreteCompressiveStrength")
+                });
+            }
+        }
+
+        if (TryGetPropertyCaseInsensitive(root, "sections", out var sectionsElem))
+        {
+            foreach (var s in sectionsElem.EnumerateArray())
+            {
+                model.Sections.Add(new Section
+                {
+                    Id = GetPropertyCaseInsensitive(s, "id").GetInt32(),
+                    Name = GetStringOrDefault(s, "name", "Section"),
+                    Type = Enum.Parse<SectionType>(GetStringOrDefault(s, "type", "Generic"), ignoreCase: true),
+                    Area = GetDoubleOrDefault(s, "area"),
+                    Iy = GetDoubleOrDefault(s, "iy"),
+                    Iz = GetDoubleOrDefault(s, "iz"),
+                    J = GetDoubleOrDefault(s, "j"),
+                    Depth = GetDoubleOrDefault(s, "depth"),
+                    Width = GetDoubleOrDefault(s, "width"),
+                    Thickness = GetDoubleOrDefault(s, "thickness"),
+                    Diameter = GetDoubleOrDefault(s, "diameter"),
+                    RebarArea = GetDoubleOrDefault(s, "rebarArea"),
+                    EffectiveDepth = GetDoubleOrDefault(s, "effectiveDepth")
+                });
+            }
+        }
+
+        if (TryGetPropertyCaseInsensitive(root, "elements", out var elementsElem))
+        {
+            foreach (var e in elementsElem.EnumerateArray())
+            {
+                var type = Enum.Parse<ElementType>(GetStringOrDefault(e, "type", "Truss"), ignoreCase: true);
+                int id = GetPropertyCaseInsensitive(e, "id").GetInt32();
+                int start = GetPropertyCaseInsensitive(e, "startNodeId").GetInt32();
+                int end = GetPropertyCaseInsensitive(e, "endNodeId").GetInt32();
+                int materialId = GetPropertyCaseInsensitive(e, "materialId").GetInt32();
+                int sectionId = GetPropertyCaseInsensitive(e, "sectionId").GetInt32();
+                double rollAngle = GetDoubleOrDefault(e, "rollAngleRadians");
+                var releases = ReadReleases(e);
+                model.Elements.Add(type == ElementType.Frame3D
+                    ? new FrameElement3D
+                    {
+                        Id = id,
+                        StartNodeId = start,
+                        EndNodeId = end,
+                        MaterialId = materialId,
+                        SectionId = sectionId,
+                        RollAngleRadians = rollAngle,
+                        Releases = releases
+                    }
+                    : new TrussElement
+                    {
+                        Id = id,
+                        StartNodeId = start,
+                        EndNodeId = end,
+                        MaterialId = materialId,
+                        SectionId = sectionId,
+                        RollAngleRadians = rollAngle,
+                        Releases = releases
+                    });
+            }
+        }
+
+        if (TryGetPropertyCaseInsensitive(root, "designSettings", out var designSettingsElem))
+        {
+            model.DesignSettings = new DesignSettings
+            {
+                SteelResistanceFactor = GetDoubleOrDefault(designSettingsElem, "steelResistanceFactor", 0.9),
+                ConcreteFlexureResistanceFactor = GetDoubleOrDefault(designSettingsElem, "concreteFlexureResistanceFactor", 0.9),
+                ConcreteShearResistanceFactor = GetDoubleOrDefault(designSettingsElem, "concreteShearResistanceFactor", 0.75),
+                CompressionEffectiveLengthFactor = GetDoubleOrDefault(designSettingsElem, "compressionEffectiveLengthFactor", 1.0),
+                DefaultSteelYieldStrength = GetDoubleOrDefault(designSettingsElem, "defaultSteelYieldStrength", 250e6),
+                DefaultRebarYieldStrength = GetDoubleOrDefault(designSettingsElem, "defaultRebarYieldStrength", 420e6),
+                SectionClassification = GetStringOrDefault(designSettingsElem, "sectionClassification", "MVP compact placeholder")
+            };
+        }
+
+        if (TryGetPropertyCaseInsensitive(root, "loadCases", out var loadCasesElem))
+        {
+            var cases = JsonSerializer.Deserialize<List<LoadCase>>(loadCasesElem.GetRawText());
+            if (cases != null)
+                model.LoadCases.AddRange(cases);
+        }
+
+        if (TryGetPropertyCaseInsensitive(root, "loadCombinations", out var combinationsElem))
+        {
+            var combinations = JsonSerializer.Deserialize<List<LoadCombination>>(combinationsElem.GetRawText());
+            if (combinations != null)
+                model.LoadCombinations.AddRange(combinations);
+        }
+
+        if (TryGetPropertyCaseInsensitive(root, "loads", out var loadsElem))
+        {
+            foreach (var load in loadsElem.EnumerateArray())
+            {
+                string kind = GetStringOrDefault(load, "kind", "");
+                string loadCaseId = GetStringOrDefault(load, "loadCaseId", "");
+                if (kind == "Nodal")
+                {
+                    model.Loads.Add(new NodalLoad
+                    {
+                        LoadCaseId = loadCaseId,
+                        NodeId = GetPropertyCaseInsensitive(load, "nodeId").GetInt32(),
+                        Force = new Vector3D(GetDoubleOrDefault(load, "fx"), GetDoubleOrDefault(load, "fy"), GetDoubleOrDefault(load, "fz")),
+                        Moment = new Vector3D(GetDoubleOrDefault(load, "mx"), GetDoubleOrDefault(load, "my"), GetDoubleOrDefault(load, "mz"))
+                    });
+                }
+                else if (kind == "MemberPoint")
+                {
+                    model.Loads.Add(new MemberPointLoad
+                    {
+                        LoadCaseId = loadCaseId,
+                        ElementId = GetPropertyCaseInsensitive(load, "elementId").GetInt32(),
+                        RelativeDistance = GetDoubleOrDefault(load, "relativeDistance", 0.5),
+                        Force = new Vector3D(GetDoubleOrDefault(load, "fx"), GetDoubleOrDefault(load, "fy"), GetDoubleOrDefault(load, "fz")),
+                        Moment = new Vector3D(GetDoubleOrDefault(load, "mx"), GetDoubleOrDefault(load, "my"), GetDoubleOrDefault(load, "mz")),
+                        Direction = Enum.Parse<LoadDirection>(GetStringOrDefault(load, "direction", "GlobalZ"), ignoreCase: true)
+                    });
+                }
+                else if (kind == "MemberDistributed")
+                {
+                    model.Loads.Add(new MemberDistributedLoad
+                    {
+                        LoadCaseId = loadCaseId,
+                        ElementId = GetPropertyCaseInsensitive(load, "elementId").GetInt32(),
+                        ForcePerLength = new Vector3D(GetDoubleOrDefault(load, "wx"), GetDoubleOrDefault(load, "wy"), GetDoubleOrDefault(load, "wz")),
+                        Direction = Enum.Parse<LoadDirection>(GetStringOrDefault(load, "direction", "GlobalZ"), ignoreCase: true)
+                    });
+                }
+            }
+        }
+
+        return model;
+    }
+
     /// <summary>
     /// Exports structure to JSON format.
     /// </summary>
@@ -178,6 +522,41 @@ public static class StructureImporterExporter
             return value;
 
         throw new KeyNotFoundException($"Required JSON property '{propertyName}' was not found.");
+    }
+
+    private static double GetDoubleOrDefault(JsonElement element, string propertyName, double defaultValue = 0)
+    {
+        return TryGetPropertyCaseInsensitive(element, propertyName, out var value) && value.ValueKind != JsonValueKind.Null
+            ? value.GetDouble()
+            : defaultValue;
+    }
+
+    private static bool GetBoolOrDefault(JsonElement element, string propertyName, bool defaultValue = false)
+    {
+        return TryGetPropertyCaseInsensitive(element, propertyName, out var value) && value.ValueKind != JsonValueKind.Null
+            ? value.GetBoolean()
+            : defaultValue;
+    }
+
+    private static string GetStringOrDefault(JsonElement element, string propertyName, string defaultValue)
+    {
+        return TryGetPropertyCaseInsensitive(element, propertyName, out var value) && value.ValueKind != JsonValueKind.Null
+            ? value.GetString() ?? defaultValue
+            : defaultValue;
+    }
+
+    private static FrameMemberRelease ReadReleases(JsonElement element)
+    {
+        if (!TryGetPropertyCaseInsensitive(element, "releases", out var releases) || releases.ValueKind != JsonValueKind.Object)
+            return new FrameMemberRelease();
+
+        return new FrameMemberRelease
+        {
+            StartMomentY = GetBoolOrDefault(releases, "startMomentY"),
+            StartMomentZ = GetBoolOrDefault(releases, "startMomentZ"),
+            EndMomentY = GetBoolOrDefault(releases, "endMomentY"),
+            EndMomentZ = GetBoolOrDefault(releases, "endMomentZ")
+        };
     }
     
     /// <summary>

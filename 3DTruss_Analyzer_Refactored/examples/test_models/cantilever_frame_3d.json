@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 2,
+  "nodes": [
+    { "id": 1, "x": 0, "y": 0, "z": 0, "fixUx": true, "fixUy": true, "fixUz": true, "fixRx": true, "fixRy": true, "fixRz": true },
+    { "id": 2, "x": 3, "y": 0, "z": 0, "fx": 0, "fy": -10000, "fz": 0 }
+  ],
+  "materials": [
+    { "id": 1, "name": "Structural Steel", "type": "Steel", "youngsModulus": 200000000000, "poissonsRatio": 0.3, "density": 7850, "yieldStrength": 250000000 }
+  ],
+  "sections": [
+    { "id": 1, "name": "Generic Frame", "type": "Generic", "area": 0.003, "iy": 0.000006, "iz": 0.000008, "j": 0.000002, "width": 0.2, "depth": 0.3 }
+  ],
+  "elements": [
+    { "id": 1, "type": "Frame3D", "startNodeId": 1, "endNodeId": 2, "materialId": 1, "sectionId": 1, "rollAngleRadians": 0 }
+  ],
+  "loadCases": [],
+  "loadCombinations": [],
+  "loads": []
+}

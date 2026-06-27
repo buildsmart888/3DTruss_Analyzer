@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 2,
+  "nodes": [
+    { "id": 1, "x": -1, "y": -1, "z": 0, "fixUx": true, "fixUy": true, "fixUz": true, "fixRx": true, "fixRy": true, "fixRz": true },
+    { "id": 2, "x": 1, "y": -1, "z": 0, "fixUx": true, "fixUy": true, "fixUz": true, "fixRx": true, "fixRy": true, "fixRz": true },
+    { "id": 3, "x": 1, "y": 1, "z": 0, "fixUx": true, "fixUy": true, "fixUz": true, "fixRx": true, "fixRy": true, "fixRz": true },
+    { "id": 4, "x": -1, "y": 1, "z": 0, "fixUx": true, "fixUy": true, "fixUz": true, "fixRx": true, "fixRy": true, "fixRz": true },
+    { "id": 5, "x": 0, "y": 0, "z": 5, "fx": 1000, "fy": 0, "fz": -8000 }
+  ],
+  "materials": [
+    { "id": 1, "name": "Tower Steel", "type": "Steel", "youngsModulus": 200000000000, "poissonsRatio": 0.3, "density": 7850, "yieldStrength": 250000000 }
+  ],
+  "sections": [
+    { "id": 1, "name": "Truss Bar", "type": "Generic", "area": 0.0015, "iy": 0.00000015, "iz": 0.00000015, "j": 0.00000015, "width": 0.04, "depth": 0.04 }
+  ],
+  "elements": [
+    { "id": 1, "type": "Truss", "startNodeId": 1, "endNodeId": 5, "materialId": 1, "sectionId": 1 },
+    { "id": 2, "type": "Truss", "startNodeId": 2, "endNodeId": 5, "materialId": 1, "sectionId": 1 },
+    { "id": 3, "type": "Truss", "startNodeId": 3, "endNodeId": 5, "materialId": 1, "sectionId": 1 },
+    { "id": 4, "type": "Truss", "startNodeId": 4, "endNodeId": 5, "materialId": 1, "sectionId": 1 }
+  ],
+  "loadCases": [],
+  "loadCombinations": [],
+  "loads": []
+}

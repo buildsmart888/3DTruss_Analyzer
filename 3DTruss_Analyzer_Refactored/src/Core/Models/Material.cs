@@ -1,25 +1,23 @@
 namespace TrussAnalyzer.Core.Models;
 
 /// <summary>
-/// Material properties for truss elements.
-/// All units are in SI (Pascal, kg/m³).
+/// Material properties for structural elements. Units are SI.
 /// </summary>
 public record Material
 {
-    /// <summary>Name of the material (e.g., "Steel A36")</summary>
+    public int Id { get; init; }
+    public MaterialType Type { get; init; } = MaterialType.Custom;
     public string Name { get; init; } = "";
-
-    /// <summary>Young's Modulus / Elastic Modulus (units: Pascal = N/m²)</summary>
     public double YoungsModulus { get; init; }
-
-    /// <summary>Density (units: kg/m³)</summary>
+    public double ShearModulus { get; init; }
     public double Density { get; init; }
-
-    /// <summary>Poisson's ratio (dimensionless)</summary>
     public double PoissonsRatio { get; init; }
-
-    /// <summary>Yield strength for stress checking (units: Pascal)</summary>
     public double YieldStrength { get; init; }
+    public double UltimateStrength { get; init; }
+    public double ConcreteCompressiveStrength { get; init; }
+
+    public double EffectiveShearModulus =>
+        ShearModulus > 0 ? ShearModulus : YoungsModulus / (2.0 * (1.0 + PoissonsRatio));
 
     public Material()
     {
@@ -39,23 +37,43 @@ public record Material
         YieldStrength = yieldStrength;
     }
 
-    /// <summary>Standard structural steel properties</summary>
     public static Material StructuralSteel => new()
     {
         Name = "Structural Steel",
-        YoungsModulus = 200e9,      // 200 GPa
-        Density = 7850,             // 7850 kg/m³
+        Type = MaterialType.Steel,
+        YoungsModulus = 200e9,
+        Density = 7850,
         PoissonsRatio = 0.3,
-        YieldStrength = 250e6       // 250 MPa
+        YieldStrength = 250e6,
+        UltimateStrength = 400e6
     };
 
-    /// <summary>Aluminum 6061-T6 properties</summary>
     public static Material Aluminum6061 => new()
     {
         Name = "Aluminum 6061-T6",
-        YoungsModulus = 68.9e9,     // 68.9 GPa
-        Density = 2700,             // 2700 kg/m³
+        Type = MaterialType.Aluminum,
+        YoungsModulus = 68.9e9,
+        Density = 2700,
         PoissonsRatio = 0.33,
-        YieldStrength = 276e6       // 276 MPa
+        YieldStrength = 276e6
     };
+
+    public static Material Concrete30MPa => new()
+    {
+        Name = "Concrete 30 MPa",
+        Type = MaterialType.Concrete,
+        YoungsModulus = 25e9,
+        Density = 2400,
+        PoissonsRatio = 0.2,
+        ConcreteCompressiveStrength = 30e6
+    };
+}
+
+public enum MaterialType
+{
+    Steel,
+    Concrete,
+    Aluminum,
+    Timber,
+    Custom
 }

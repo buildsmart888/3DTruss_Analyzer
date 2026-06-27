@@ -94,6 +94,14 @@ public readonly struct Vector3D
     public double Dot(Vector3D other) => X * other.X + Y * other.Y + Z * other.Z;
 
     /// <summary>
+    /// Cross product of two vectors.
+    /// </summary>
+    public Vector3D Cross(Vector3D other) => new(
+        Y * other.Z - Z * other.Y,
+        Z * other.X - X * other.Z,
+        X * other.Y - Y * other.X);
+
+    /// <summary>
     /// Vector addition.
     /// </summary>
     public Vector3D Add(Vector3D other) => new(X + other.X, Y + other.Y, Z + other.Z);
@@ -112,3 +120,5 @@ public readonly struct Vector3D
 
     public override string ToString() => $"[{X:F4}, {Y:F4}, {Z:F4}]";
 }
+
+public readonly record struct LocalAxes(Vector3D XAxis, Vector3D YAxis, Vector3D ZAxis);

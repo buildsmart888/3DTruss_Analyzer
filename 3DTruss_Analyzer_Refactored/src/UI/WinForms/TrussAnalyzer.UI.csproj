@@ -5,13 +5,20 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
     <ImplicitUsings>enable</ImplicitUsings>
+    <NoWarn>$(NoWarn);NU1701</NoWarn>
     <RootNamespace>TrussAnalyzer.UI</RootNamespace>
     <AssemblyName>TrussAnalyzer.UI</AssemblyName>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\TrussAnalyzer.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="HelixToolkit.Wpf" Version="2.27.0" />
+    <PackageReference Include="OpenTK.GLControl" Version="4.0.2" />
   </ItemGroup>
 
 </Project>

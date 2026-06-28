@@ -88,6 +88,8 @@ Deliverables:
 
 Goal: stop forcing users to model only nodes and elements; introduce building objects that generate analysis models.
 
+Status: started. A minimal `BuildingModel` layer can now generate a simple frame `StructuralModel` from grid lines, stories, beams, columns, supports, and nodal loads.
+
 Scope:
 
 - `BuildingModel` layer above `StructuralModel`.
@@ -119,6 +121,19 @@ Deliverables:
 - Engineers can create a simple building by grid and story rather than manually entering every node.
 - Generated `StructuralModel` remains inspectable and exportable.
 - Building objects keep stable IDs for editing and report traceability.
+
+Current implemented subset:
+
+- `GridLine`, `Story`, `BeamObject`, `ColumnObject`, `BuildingSupport`, and `BuildingNodalLoad`.
+- `BuildingModel.ToStructuralModel()` for small 3D frame models.
+- Tests cover a 1-bay, 1-story frame with fixed supports and a lateral nodal load.
+
+Current limitations:
+
+- No floor/roof area loads or tributary load distribution yet.
+- No rigid diaphragm approximation or story drift summaries yet.
+- No UI object editing workflow yet.
+- Generated structural elements do not yet carry source building-object traceability metadata.
 
 ## Phase 3 - Thai Load Generation And Load Combinations
 
@@ -356,4 +371,3 @@ Deliverables:
 - Installable desktop application.
 - Versioned documentation.
 - Repeatable release process.
-

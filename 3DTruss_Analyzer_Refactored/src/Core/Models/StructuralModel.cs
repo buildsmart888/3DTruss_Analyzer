@@ -2,6 +2,9 @@ namespace TrussAnalyzer.Core.Models;
 
 public class StructuralModel
 {
+    public const int DefaultResultStationCount = 5;
+    private int _resultStationCount = DefaultResultStationCount;
+
     public int SchemaVersion { get; init; } = 2;
     public List<Node> Nodes { get; init; } = new();
     public List<StructuralElement> Elements { get; init; } = new();
@@ -14,6 +17,11 @@ public class StructuralModel
     public CoordinateConvention CoordinateSystem { get; set; } = CoordinateConvention.RightHanded_ZUp;
     public ViewerDisplayOptions DisplaySettings { get; set; } = new();
     public string ActiveLoadCaseId { get; set; } = string.Empty;
+    public int ResultStationCount
+    {
+        get => _resultStationCount;
+        set => _resultStationCount = value >= 2 ? value : DefaultResultStationCount;
+    }
 
     public void EnsureDefaultLoadTemplates()
     {

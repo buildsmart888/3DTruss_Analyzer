@@ -22,6 +22,7 @@ public static class StructureImporterExporter
             coordinateSystem = model.CoordinateSystem.ToString(),
             displaySettings = model.DisplaySettings,
             activeLoadCaseId = model.ActiveLoadCaseId,
+            resultStationCount = model.ResultStationCount,
             nodes = model.Nodes.Select(n => new
             {
                 n.Id,
@@ -190,6 +191,8 @@ public static class StructureImporterExporter
 
         if (TryGetPropertyCaseInsensitive(root, "activeLoadCaseId", out var activeLoadCaseElem))
             model.ActiveLoadCaseId = activeLoadCaseElem.GetString() ?? string.Empty;
+
+        model.ResultStationCount = GetIntOrDefault(root, "resultStationCount", StructuralModel.DefaultResultStationCount);
 
         if (TryGetPropertyCaseInsensitive(root, "nodes", out var nodesElem))
         {
@@ -536,6 +539,13 @@ public static class StructureImporterExporter
     {
         return TryGetPropertyCaseInsensitive(element, propertyName, out var value) && value.ValueKind != JsonValueKind.Null
             ? value.GetDouble()
+            : defaultValue;
+    }
+
+    private static int GetIntOrDefault(JsonElement element, string propertyName, int defaultValue = 0)
+    {
+        return TryGetPropertyCaseInsensitive(element, propertyName, out var value) && value.ValueKind != JsonValueKind.Null
+            ? value.GetInt32()
             : defaultValue;
     }
 

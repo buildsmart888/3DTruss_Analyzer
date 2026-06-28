@@ -23,6 +23,7 @@ Current MVP capabilities:
 - Nodal force/moment loads, member point loads, member distributed loads, and self-weight.
 - Schema v2 JSON import/export while still importing legacy truss JSON.
 - Frame member moment releases, local roll angle, local-axis helpers, and member load recovery.
+- Configurable frame force-result station count for denser axial/shear/torsion/moment diagram DTOs.
 - Preliminary steel/aluminum/custom stress checks and simplified RC axial/flexure/shear checks.
 - Solver diagnostics and a replaceable linear solver interface with dense Gaussian elimination as the default.
 - WinForms engineering desktop shell with model editor panels and a WPF/HelixToolkit 3D viewer.
@@ -144,6 +145,7 @@ Console.WriteLine(result.NodeResults.Single(n => n.NodeId == 2).Displacement.Y);
 - No P-Delta, plastic hinge, modal, dynamic, time-history, response-spectrum, or nonlinear analysis.
 - No automatic wind/seismic load generator yet.
 - Frame formulation is an MVP Euler-Bernoulli beam-column implementation without rigid offsets or shear deformation.
+- Member force station results are linearly interpolated between recovered local end forces; denser stations improve diagram sampling density but are not a full distributed-load diagram engine.
 - Dense matrix solving is currently used; true sparse storage and sparse solving are future work.
 - Design checks are preliminary and must not be used as final professional design output.
 - The PDF writer is a basic report generator, not a production report layout engine.

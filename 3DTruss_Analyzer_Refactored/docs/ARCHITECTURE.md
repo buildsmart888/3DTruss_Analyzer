@@ -23,6 +23,8 @@ The current `StructuralSolver` still performs many responsibilities in one class
 
 Model validation has been extracted to `Core/Analysis/Validation/ModelValidator`, with `StructuralSolver.ValidateModel()` kept as the compatibility entrypoint. The remaining solver responsibilities should continue to be split before adding building, steel design, RC design, shell elements, and Thai code modules.
 
+The first building workflow layer is available as `Core/Models/BuildingModel.cs`. It contains grid lines, stories, beam objects, column objects, supports, and nodal loads, and generates an ordinary `StructuralModel` for analysis/export.
+
 ## Target Architecture
 
 Recommended structure:
@@ -73,6 +75,13 @@ Examples:
 - `Section`
 - `LoadCase`
 - `LoadCombination`
+
+Current building workflow boundary:
+
+- `BuildingModel` is an object-level modeling layer above `StructuralModel`.
+- `BuildingModel.ToStructuralModel()` generates nodes and `FrameElement3D` members from grid/story beam and column objects.
+- Generated `StructuralModel` instances remain inspectable, analyzable by `StructuralSolver`, and exportable through the existing JSON path.
+- Current scope is limited to simple frame generation with explicit supports and nodal loads; floor loads, diaphragms, object editing, and traceability metadata are future work.
 
 ### Analysis
 
@@ -147,7 +156,21 @@ Reporting should consume result DTOs, not query solver internals directly.
 
 ```text
 User input
-  -> BuildingModel or StructuralModel
+  -> BuildingModel
+  -> StructuralModel generation
+  -> validation
+  -> analysis
+  -> result DTOs
+  -> design services
+  -> report/view models
+  -> UI and PDF output
+```
+
+For lower-level workflows, users and tests may still create a `StructuralModel` directly:
+
+```text
+User input
+  -> StructuralModel
   -> validation
   -> analysis
   -> result DTOs

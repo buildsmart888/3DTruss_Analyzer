@@ -276,6 +276,31 @@ public class StructuralSolverMvpTests
     }
 
     [Fact]
+    public void ElementForceResult_UsesConfiguredStationCountForFrameDiagramResults()
+    {
+        double length = 4;
+        double loadPerLength = 1000;
+        var model = CreateFixedFixedFrame(length);
+        model.ResultStationCount = 9;
+        model.LoadCases.Add(new LoadCase { CaseId = "W", Name = "Uniform" });
+        model.Loads.Add(new MemberDistributedLoad
+        {
+            LoadCaseId = "W",
+            ElementId = 1,
+            ForcePerLength = new Vector3D(0, -loadPerLength, 0)
+        });
+
+        var result = new StructuralSolver(model).Analyze("W");
+        var element = result.ElementResults.Single();
+
+        Assert.Equal(9, element.StationResults.Count);
+        Assert.Equal(0, element.StationResults.First().RelativePosition, precision: 12);
+        Assert.Equal(0.5, element.StationResults[4].RelativePosition, precision: 12);
+        Assert.Equal(1, element.StationResults.Last().RelativePosition, precision: 12);
+        Assert.Equal(loadPerLength * length * length / 12.0, element.MomentZ, precision: 6);
+    }
+
+    [Fact]
     public void PartialDistributedLoad_ProducesExpectedTotalReaction()
     {
         double length = 4;
@@ -343,6 +368,19 @@ public class StructuralSolverMvpTests
 
         Assert.Equal(0.2, load.StartRelativeDistance, precision: 10);
         Assert.Equal(0.8, load.EndRelativeDistance, precision: 10);
+    }
+
+    [Fact]
+    public void StructuralJsonV2_RoundTrip_PreservesResultStationCount()
+    {
+        var model = CreateCantileverFrame(2);
+        model.ResultStationCount = 11;
+
+        var imported = StructureImporterExporter.ImportStructuralModelFromJson(
+            StructureImporterExporter.ExportStructuralModelToJson(model));
+
+        Assert.Equal(11, imported.ResultStationCount);
+        Assert.Equal(11, new StructuralSolver(imported).Analyze().ElementResults.Single().StationResults.Count);
     }
 
     [Fact]

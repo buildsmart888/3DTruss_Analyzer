@@ -45,6 +45,7 @@ Current MVP assumptions:
 - Euler-Bernoulli frame behavior.
 - Truss elements are axial-only.
 - Loads are applied as nodal loads or converted to equivalent nodal loads.
+- Frame member result stations are reported at evenly spaced relative positions along each member; the default is 5 stations and models may request a denser station count.
 
 Known unavailable behavior:
 
@@ -119,4 +120,3 @@ Until validated design modules exist, reports must state:
 - current limitations
 - whether design checks are preliminary
 - whether output is suitable for final professional design
-

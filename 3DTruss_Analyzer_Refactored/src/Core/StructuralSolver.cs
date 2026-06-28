@@ -597,15 +597,17 @@ public class StructuralSolver
                 Force = new Vector3D(localF[6], localF[7], localF[8]),
                 Moment = new Vector3D(localF[9], localF[10], localF[11])
             },
-            StationResults = BuildStationResults(element.Id, localF)
+            StationResults = BuildStationResults(element.Id, localF, _model.ResultStationCount)
         };
     }
 
-    private static List<ElementStationResult> BuildStationResults(int elementId, double[] localF)
+    private static List<ElementStationResult> BuildStationResults(int elementId, double[] localF, int stationCount)
     {
+        int count = stationCount >= 2 ? stationCount : StructuralModel.DefaultResultStationCount;
         var stations = new List<ElementStationResult>();
-        foreach (double t in new[] { 0.0, 0.25, 0.5, 0.75, 1.0 })
+        for (int i = 0; i < count; i++)
         {
+            double t = count == 1 ? 0 : (double)i / (count - 1);
             stations.Add(new ElementStationResult
             {
                 ElementId = elementId,

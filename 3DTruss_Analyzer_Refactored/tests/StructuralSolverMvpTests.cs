@@ -1,6 +1,7 @@
 namespace TrussAnalyzer.Tests;
 
 using TrussAnalyzer.Core;
+using TrussAnalyzer.Core.Analysis.Validation;
 using TrussAnalyzer.Core.IO;
 using TrussAnalyzer.Core.Models;
 using Xunit;
@@ -405,6 +406,22 @@ public class StructuralSolverMvpTests
             m.Message.Contains("missing material"));
     }
 
+    [Fact]
+    public void ModelValidator_MatchesStructuralSolverValidationMessages()
+    {
+        var model = new StructuralModel();
+        model.Nodes.Add(new Node(1, new Point3D(0, 0, 0)));
+        model.Nodes.Add(new Node(2, new Point3D(1, 0, 0)));
+        model.Elements.Add(new FrameElement3D(1, 1, 2, 99, 88));
+
+        var serviceMessages = new ModelValidator(model).Validate();
+        var solverMessages = new StructuralSolver(model).ValidateModel();
+
+        Assert.Equal(
+            serviceMessages.Select(ToComparableValidationMessage),
+            solverMessages.Select(ToComparableValidationMessage));
+    }
+
     private static StructuralModel CreateCantileverFrame(double length, double area = 0.003)
     {
         var model = new StructuralModel();
@@ -434,6 +451,11 @@ public class StructuralSolverMvpTests
         model.Nodes.Add(new Node(2, new Point3D(length, 0, 0)));
         model.Elements.Add(new FrameElement3D(1, 1, 2, 1, 1));
         return model;
+    }
+
+    private static string ToComparableValidationMessage(ModelValidationMessage message)
+    {
+        return $"{message.Severity}|{message.ObjectType}|{message.ObjectId}|{message.Message}";
     }
 
     private static StructuralModel CreateFixedFixedFrame(double length)

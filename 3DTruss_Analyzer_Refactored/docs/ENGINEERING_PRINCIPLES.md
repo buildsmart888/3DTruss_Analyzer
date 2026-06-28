@@ -1,152 +1,122 @@
-# Engineering Principles for 3D Truss Analysis
+# Engineering Principles
 
-## 1. Fundamental Theory
+This document records the core structural-analysis principles currently used by the project.
 
-### 1.1 Truss Assumptions
-- All members are connected by frictionless pins (hinges)
-- Loads are applied only at joints (nodes)
-- Members carry only axial forces (tension or compression)
-- Self-weight is distributed equally to end nodes
+## Governing Equation
 
-### 1.2 Finite Element Method for Trusses
+Linear static structural analysis is based on:
 
-The governing equation for structural analysis:
-```
+```text
 [K]{U} = {F}
 ```
+
 Where:
-- [K] = Global stiffness matrix
-- {U} = Nodal displacement vector
-- {F} = Nodal force vector
 
-## 2. Element Formulation
+- `[K]` is the global stiffness matrix.
+- `{U}` is the global displacement vector.
+- `{F}` is the global load vector.
 
-### 2.1 Local Stiffness Matrix
-For a 3D truss element with 2 nodes:
+After solving, reactions are recovered from:
+
+```text
+{R} = [K_original]{U} - {F_original}
 ```
-k_local = (AE/L) × [1 -1; -1 1]
+
+## Truss Assumptions
+
+Truss elements assume:
+
+- members are pin-connected
+- loads are applied through joints or equivalent nodal loads
+- members carry axial force only
+- no bending, shear, or torsion is recovered
+- positive axial force means tension
+- negative axial force means compression
+
+For a 3D truss element:
+
+```text
+k = AE / L
 ```
+
 Where:
-- A = Cross-sectional area (m²)
-- E = Young's modulus (Pa)
-- L = Element length (m)
 
-### 2.2 Transformation Matrix
-Direction cosines for 3D element:
-```
-l = (x₂-x₁)/L
-m = (y₂-y₁)/L
-n = (z₂-z₁)/L
+- `A` is area.
+- `E` is Young's modulus.
+- `L` is member length.
+
+## Frame Assumptions
+
+Current frame elements assume:
+
+- 6 DOF per node: UX, UY, UZ, RX, RY, RZ
+- linear elastic behavior
+- small displacement
+- Euler-Bernoulli beam-column behavior
+- axial, torsion, bending, and shear/end-force recovery
+
+Current limitations:
+
+- no geometric stiffness
+- no P-Delta
+- no nonlinear release behavior
+- no rigid offsets
+- no shell/slab/wall coupling
+
+## Self-Weight
+
+Self-weight is calculated directly:
+
+```text
+W = rho * A * L * g
 ```
 
-Transformation from local to global coordinates:
-```
-{T} = [ l  m  n  0  0  0 ]
-      [ 0  0  0  l  m  n ]
-```
-
-### 2.3 Global Element Stiffness Matrix
-```
-[k_global] = [T]^T × [k_local] × [T]
-```
-
-This results in a 6×6 matrix (3 DOF per node × 2 nodes).
-
-## 3. Load Calculations
-
-### 3.1 Self-Weight (CORRECT FORMULA)
-Total weight of element:
-```
-W_total = ρ × A × L × g
-```
 Where:
-- ρ = Material density (kg/m³)
-- A = Cross-sectional area (m²)
-- L = Element length (m)
-- g = Gravitational acceleration (9.81 m/s²)
 
-Force at each node (distributed equally):
-```
-F_node = W_total / 2
-```
+- `rho` is material density in kg/m3.
+- `A` is section area in m2.
+- `L` is member length in m.
+- `g` is 9.81 m/s2.
 
-Applied in the direction opposite to gravity vector.
+For line elements, the MVP distributes half the weight to each end node in global `-Z`.
 
-**CRITICAL**: The original code incorrectly calculated self-weight using mass matrix transformation. The correct approach is direct calculation as shown above.
+## Coordinate Convention
 
-### 3.2 External Loads
-Point loads applied directly at nodes in global coordinate system.
+- Global coordinate system is right-handed.
+- Global Z is vertical.
+- Gravity acts in global `-Z`.
+- Member local x-axis runs from start node to end node.
+- Member local y/z axes are generated as a right-handed basis and may be rotated by roll angle.
 
-## 4. Boundary Conditions
+## Equilibrium Check
 
-### 4.1 Support Types
-- **Pinned Support**: Fixed in X, Y, Z (3 restraints)
-- **Roller Support**: Fixed in one direction only (1 restraint)
-- **Fixed Support**: Not applicable for trusses (no moment resistance)
+After analysis, the result should satisfy global force equilibrium:
 
-### 4.2 Application Method
-Remove rows and columns corresponding to fixed DOFs from the global system, or use penalty method.
-
-## 5. Solution Procedure
-
-1. **Assemble** global stiffness matrix [K]
-2. **Apply** loads to form force vector {F}
-3. **Apply** boundary conditions
-4. **Solve** for displacements: {U} = [K]⁻¹{F}
-5. **Calculate** reactions: {R} = [K]{U} - {F}
-6. **Calculate** member forces from displacements
-
-## 6. Equilibrium Verification
-
-After solving, verify:
-```
-ΣFx_applied + ΣFx_reaction = 0
-ΣFy_applied + ΣFy_reaction = 0
-ΣFz_applied + ΣFz_reaction = 0
+```text
+sum(Fx_applied + Fx_reaction) ~= 0
+sum(Fy_applied + Fy_reaction) ~= 0
+sum(Fz_applied + Fz_reaction) ~= 0
 ```
 
-Acceptable tolerance: < 10⁻⁶ × max(|F_applied|)
+The tolerance should scale with total applied load.
 
-## 7. Common Errors to Avoid
+## Common Mistakes To Avoid
 
-### 7.1 Original Code Issues Found:
-1. ❌ Self-weight calculation using incorrect mass matrix transformation
-2. ❌ Force distribution dividing by connection count (wrong approach)
-3. ❌ No equilibrium check after solution
-4. ❌ No unit specifications
-5. ❌ Option Strict Off allowing type conversions
+- Mixing UI units with internal SI units.
+- Applying self-weight more than once.
+- Treating truss members as bending members.
+- Releasing both bending ends of a member without checking mechanisms.
+- Ignoring unconstrained rotational DOFs in frame models.
+- Losing sign convention consistency between solver, viewer, and report.
+- Adding design checks directly into the analysis solver.
 
-### 7.2 Corrected Approaches:
-1. ✅ Direct self-weight: W = ρALg, distributed w/2 to each node
-2. ✅ Full nodal loads applied directly (no division)
-3. ✅ Mandatory equilibrium verification
-4. ✅ Explicit units in all documentation
-5. ✅ Strong typing throughout
+## References For Validation
 
-## 8. Validation Test Cases
+Use these references for analytical and benchmark examples:
 
-### 8.1 Simple Bar (Analytical Solution Available)
-- Length: 2 m
-- Area: 0.001 m²
-- E: 200 GPa
-- Load: 10 kN axial
-- Expected displacement: δ = PL/AE = 0.0001 m
-
-### 8.2 Cantilever Truss
-Compare with textbook solutions for verification.
-
-## 9. Units Convention
-
-All calculations use SI units:
-- Length: meters (m)
-- Force: Newtons (N)
-- Stress: Pascals (Pa)
-- Mass: kilograms (kg)
-- Density: kg/m³
-- Young's Modulus: Pa (N/m²)
-
-## 10. References
-
-1. Hibbeler, R.C. "Structural Analysis"
-2. McGuire, W. et al. "Matrix Structural Analysis"
-3. Logan, D.L. "A First Course in the Finite Element Method"
+- Hibbeler, Structural Analysis.
+- McGuire, Gallagher, and Ziemian, Matrix Structural Analysis.
+- Logan, A First Course in the Finite Element Method.
+- Closed-form beam tables.
+- Trusted commercial software comparison models when available.
+- OpenSees comparison models after the adapter is implemented.

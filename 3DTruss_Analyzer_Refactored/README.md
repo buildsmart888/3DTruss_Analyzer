@@ -1,48 +1,81 @@
-![1782545807181](image/README/1782545807181.png)![1782545813359](image/README/1782545813359.png)![1782545904463](image/README/1782545904463.png)![1782546145626](image/README/1782546145626.png)# 3D Structural Analyzer MVP
+# 3D Structural Analyzer
 
-This project is a C#/.NET 8 structural analysis MVP for linear elastic 3D truss and 3D frame/beam-column models. It keeps the original `TrussSolver` API as a compatibility facade and adds a newer `StructuralModel` + `StructuralSolver` pipeline for 6-DOF frame analysis.
+> C#/.NET structural analysis and design platform evolving from the original 3D Truss Analyzer into a practical 3D building analysis tool for Thai structural engineers.
 
-All core calculations use SI units: meters, Newtons, Pascals, and kg/m3.
+This repository currently contains a working MVP for linear elastic 3D truss and 3D frame analysis. The long-term goal is to grow it into a maintainable desktop engineering application for steel buildings, reinforced-concrete buildings, warehouses, factory roofs, and other common building structures used in Thailand.
+
+Core calculations use SI base units: meters, Newtons, Pascals, kilograms, and kg/m3. User-facing input, output, and reports may later expose Thai engineering units such as kN, tonf, kgf, m, cm, and mm through a controlled unit-conversion layer.
 
 ## Current Status
 
-- `TrussAnalyzer.sln` is the main solution.
-- `dotnet build TrussAnalyzer.sln` succeeds.
-- `dotnet test TrussAnalyzer.sln` succeeds.
-- Existing truss workflows and tests remain supported.
-- New MVP structural workflow supports:
-  - `TrussElement`: axial-only 3D truss behavior.
-  - `FrameElement3D`: 6 DOF per node with axial, torsion, bending, shear/end-force recovery.
-  - `StructuralModel` container for nodes, elements, materials, sections, load cases, load combinations, and load items.
-  - Nodal force/moment loads, member point loads, member distributed loads, and self-weight.
-  - Schema v2 JSON import/export while still importing legacy truss JSON.
-  - Preliminary steel/aluminum/custom stress checks and simplified RC axial/flexure/shear checks.
-  - Frame member moment releases, local roll angle, local-axis helpers, and richer member load recovery.
-  - WinForms engineering desktop shell with ribbon-style actions, object tree, properties panel, bottom input/results grids, and a WPF/HelixToolkit 3D viewer.
-  - Viewer coordinate convention is right-handed Z-up: X/Y are plan axes, Z is vertical, and gravity/self-weight acts in -Z.
-  - Viewer displays global axes (X red, Y green, Z blue), XY grid, view cube, member tubes, supports, load arrows, local member axes, deformed shape, and force/moment/utilization modes.
-  - Solver diagnostics and a replaceable linear solver interface with dense solver as the default.
+- Main solution: `TrussAnalyzer.sln`.
+- Core runtime: `.NET 8`.
+- UI runtime: Windows desktop with WinForms/WPF.
+- `dotnet test TrussAnalyzer.sln` currently passes.
+- The original `TrussSolver` API is kept as a compatibility facade.
+- The newer `StructuralModel` + `StructuralSolver` pipeline supports 6-DOF frame analysis.
 
-Design checks are preliminary MVP checks only. They are AISC/ACI-inspired sanity checks, not final code-compliant design.
+Current MVP capabilities:
 
-## Project Structure
+- `TrussElement`: axial-only 3D truss behavior.
+- `FrameElement3D`: 6 DOF per node with axial, torsion, bending, shear, and end-force recovery.
+- `StructuralModel` container for nodes, elements, materials, sections, load cases, load combinations, and load items.
+- Nodal force/moment loads, member point loads, member distributed loads, and self-weight.
+- Schema v2 JSON import/export while still importing legacy truss JSON.
+- Frame member moment releases, local roll angle, local-axis helpers, and member load recovery.
+- Preliminary steel/aluminum/custom stress checks and simplified RC axial/flexure/shear checks.
+- Solver diagnostics and a replaceable linear solver interface with dense Gaussian elimination as the default.
+- WinForms engineering desktop shell with model editor panels and a WPF/HelixToolkit 3D viewer.
+- Right-handed Z-up viewer convention: X/Y are plan axes, Z is vertical, and gravity acts in global `-Z`.
+
+Design checks are preliminary MVP checks only. They are not final code-compliant engineering design.
+
+## Product Direction
+
+The project should no longer be treated as only a truss application. The recommended direction is:
+
+```text
+Thai structural desktop application
+  -> Building/story/grid modeling workflow
+  -> Linear 3D frame analysis
+  -> Thai load generation and load combinations
+  -> Steel and RC design modules
+  -> Thai engineering reports
+  -> Optional OpenSees adapter for advanced/nonlinear analysis
+```
+
+PyNite is not recommended as the core engine for this C# product. OpenSees may become useful later as an external advanced solver, but the maintainable product core should remain native C# with clear solver, model, design, reporting, and UI boundaries.
+
+## Repository Structure
 
 ```text
 3DTruss_Analyzer_Refactored/
   src/
     Core/
-      Models/            # Node, Element, StructuralModel, Material, Section, Loads, Results
+      Models/            # Node, element, material, section, load, result models
       IO/                # JSON/CSV import and export
       Reporting/         # Basic PDF report generation
-      Utilities/         # Dense matrix solver
-      TrussSolver.cs     # Legacy truss compatibility solver
+      Utilities/         # Matrix and linear solver utilities
+      TrussSolver.cs     # Legacy truss compatibility facade
       StructuralSolver.cs
-    UI/WinForms/         # Desktop UI and OpenGL viewer
-  tests/                 # Unit and integration tests
-  docs/                  # Engineering and development notes
-  examples/              # Example JSON models
+    UI/WinForms/         # Desktop UI and 3D viewer shell
+  tests/                 # Unit, integration, benchmark, and regression tests
+  docs/                  # Architecture, roadmap, engineering, and process docs
+  examples/              # Example structural JSON models
+  image/README/          # README screenshots
   TrussAnalyzer.sln
 ```
+
+## Documentation
+
+- [Development Guide](docs/DEVELOPMENT_GUIDE.md)
+- [Architecture](docs/ARCHITECTURE.md)
+- [Detailed Roadmap](docs/ROADMAP.md)
+- [Engineering Standards](docs/ENGINEERING_STANDARDS.md)
+- [Quality Plan](docs/QUALITY_PLAN.md)
+- [Release Checklist](docs/RELEASE_CHECKLIST.md)
+- [Engineering Principles](docs/ENGINEERING_PRINCIPLES.md)
+- [Codex Phase Prompts](docs/CODEX_PHASE_PROMPTS.md)
 
 ## Build And Test
 
@@ -51,7 +84,10 @@ Prerequisites:
 - .NET 8 SDK or later
 - Windows desktop runtime support for WinForms/WPF
 
+Commands:
+
 ```bash
+dotnet restore TrussAnalyzer.sln
 dotnet build TrussAnalyzer.sln
 dotnet test TrussAnalyzer.sln
 dotnet run --project src/UI/WinForms/TrussAnalyzer.UI.csproj
@@ -60,12 +96,16 @@ dotnet run --project src/UI/WinForms/TrussAnalyzer.UI.csproj
 ## Coordinate And Sign Convention
 
 - Global coordinate system: right-handed, Z-up.
-- Global X and Y are the plan axes; global Z is vertical.
+- Global X and Y are plan axes.
+- Global Z is vertical.
 - Gravity and self-weight act in global `-Z`.
-- Forces `FX/FY/FZ` and moments `MX/MY/MZ` in the UI are global components unless a member load direction is explicitly set to local.
-- Member local `x` runs from start node `i` to end node `j`; local `y/z` are generated as a right-handed basis and can be rotated with roll angle.
-- Positive truss axial force is tension; negative axial force is compression.
-- Truss elements recover axial force only. Shear, torsion, and bending diagrams require `FrameElement3D`.
+- Forces `FX/FY/FZ` and moments `MX/MY/MZ` are global unless a member load direction is explicitly set to local.
+- Member local `x` runs from start node `i` to end node `j`.
+- Member local `y/z` are generated as a right-handed basis and can be rotated with roll angle.
+- Positive truss axial force is tension.
+- Negative truss axial force is compression.
+- Truss elements recover axial force only.
+- Shear, torsion, and bending diagrams require `FrameElement3D`.
 
 ## Minimal Structural Example
 
@@ -101,18 +141,21 @@ Console.WriteLine(result.NodeResults.Single(n => n.NodeId == 2).Displacement.Y);
 
 - Linear elastic, small-displacement analysis only.
 - No shell, slab, wall, plate, solid, cable, spring, or nonlinear concrete cracking elements.
-- No P-Delta, plastic hinge, modal, dynamic, seismic response spectrum, or automatic wind/seismic load generation.
-- Frame formulation is an MVP Euler-Bernoulli beam-column implementation without offsets or shear deformation.
-- Sparse solver integration exists as an interface/placeholder; production sparse storage/solve is still future work.
-- Design checks are preliminary and do not replace licensed engineering judgement or final code checks.
-- `Matrix.SolveAuto()` currently uses dense Gaussian elimination; the sparse interface is ready but not a true sparse implementation yet.
-- The built-in PDF writer is a basic report generator, not a full PDF layout engine.
+- No P-Delta, plastic hinge, modal, dynamic, time-history, response-spectrum, or nonlinear analysis.
+- No automatic wind/seismic load generator yet.
+- Frame formulation is an MVP Euler-Bernoulli beam-column implementation without rigid offsets or shear deformation.
+- Dense matrix solving is currently used; true sparse storage and sparse solving are future work.
+- Design checks are preliminary and must not be used as final professional design output.
+- The PDF writer is a basic report generator, not a production report layout engine.
 
-## Roadmap
+## Immediate Development Priorities
 
-- Phase 1: stable build/test baseline and legacy truss compatibility - complete.
-- Phase 2: 6-DOF frame solver, material/section/load systems, schema v2 IO - MVP complete.
-- Phase 3: preliminary steel/RC design checks and structural UI workflow - MVP complete.
-- Phase 4: richer viewer controls, labels, load glyphs, member releases, local axis roll, UI editor tabs, and solver interface - complete.
-- Phase 5: preliminary design settings, report/export improvements, solver diagnostics, example models, and WPF/Helix viewer shell - partial MVP complete.
-- Next: true sparse matrix implementation, code-calibrated AISC/ACI modules, member offsets/releases refinement, larger-model benchmarks, and deeper viewer picking/editing.
+1. Refactor `StructuralSolver` into validation, assembly, element formulation, result recovery, diagnostics, and design modules.
+2. Keep all engineering calculations in SI base units and add an explicit unit-conversion layer for UI/reporting.
+3. Add regression benchmarks against closed-form examples and trusted external tools.
+4. Improve 3D frame member behavior: releases, rigid offsets, load recovery, and force diagrams.
+5. Introduce building-level objects: grids, stories, beams, columns, braces, floor loads, and diaphragms.
+6. Add Thai load templates, load combinations, and report output.
+7. Build steel design first, then RC design, then shell/slab/wall modeling.
+
+See [Detailed Roadmap](docs/ROADMAP.md) for the full phased plan.

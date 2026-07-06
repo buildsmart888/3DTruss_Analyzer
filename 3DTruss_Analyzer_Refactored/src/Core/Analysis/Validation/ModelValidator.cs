@@ -29,6 +29,7 @@ public class ModelValidator
 
         AddDuplicateChecks(messages, _model.Nodes.Select(n => n.Id), "node");
         AddDuplicateChecks(messages, _model.Elements.Select(e => e.Id), "element");
+        AddDuplicateChecks(messages, _model.AreaObjects.Select(a => a.Id), "area object");
         AddDuplicateChecks(messages, _model.Materials.Select(m => m.Id), "material");
         AddDuplicateChecks(messages, _model.Sections.Select(s => s.Id), "section");
 
@@ -78,6 +79,32 @@ public class ModelValidator
                 if (Math.Abs(element.RollAngleRadians) > Math.PI * 2)
                     messages.Add(new ModelValidationMessage { Severity = "Warning", Message = $"Element {element.Id} roll angle exceeds 360 degrees; confirm units are radians in JSON and degrees in UI.", ObjectType = SelectedModelObjectType.Element, ObjectId = element.Id });
             }
+        }
+
+        foreach (var area in _model.AreaObjects)
+        {
+            if (!area.IsTriangularOrQuadrilateral)
+                messages.Add(Error($"Area object {area.Id} must reference 3 or 4 boundary nodes.", SelectedModelObjectType.AreaObject, area.Id));
+            if (area.NodeIds.GroupBy(id => id).Any(g => g.Count() > 1))
+                messages.Add(Error($"Area object {area.Id} references duplicate boundary nodes.", SelectedModelObjectType.AreaObject, area.Id));
+            foreach (int nodeId in area.NodeIds)
+            {
+                if (!_nodes.ContainsKey(nodeId))
+                    messages.Add(Error($"Area object {area.Id} references missing node {nodeId}.", SelectedModelObjectType.AreaObject, area.Id));
+            }
+
+            if (area.MaterialId <= 0 || !_materials.ContainsKey(area.MaterialId))
+                messages.Add(Error($"Area object {area.Id} references missing material {area.MaterialId}.", SelectedModelObjectType.AreaObject, area.Id));
+            if (area.Thickness <= 0)
+                messages.Add(Error($"Area object {area.Id} requires a positive thickness.", SelectedModelObjectType.AreaObject, area.Id));
+
+            messages.Add(new ModelValidationMessage
+            {
+                Severity = "Warning",
+                Message = $"Area object {area.Id} is a Phase 8 modeling placeholder and is not included in frame analysis.",
+                ObjectType = SelectedModelObjectType.AreaObject,
+                ObjectId = area.Id
+            });
         }
 
         int dof = _model.Nodes.Count * 6;

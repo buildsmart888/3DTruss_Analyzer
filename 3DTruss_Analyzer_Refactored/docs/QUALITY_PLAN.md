@@ -42,6 +42,15 @@ Use for:
 - project file compatibility
 - sign convention issues
 - self-weight and load application behavior
+- line-element analysis behavior when non-solver model objects such as area placeholders are present
+
+### Model Representation Tests
+
+Use for:
+
+- creation of core model DTOs that are not analyzed yet
+- JSON import/export round trips for schema compatibility
+- validation diagnostics for unsupported or incomplete model data
 
 ## Required Checks Before Merge
 
@@ -58,6 +67,13 @@ For solver or design changes, also add or update:
 - engineering notes
 - example model if user-facing
 - report expectations if output changes
+
+For alternative linear solver paths:
+
+- Keep dense solver regression tests passing as the default path.
+- Add equivalence tests against the dense solver before enabling any new solver path for production use.
+- Ensure solver diagnostics report the active solver path clearly.
+- Document whether an alternative solver is a prototype, dense fallback, or validated production path.
 
 ## Numerical Tolerances
 
@@ -93,4 +109,3 @@ For analysis/design changes, review should check:
 - result recovery
 - test coverage
 - report wording
-

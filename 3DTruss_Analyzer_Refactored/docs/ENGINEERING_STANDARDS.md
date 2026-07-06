@@ -57,7 +57,29 @@ Known unavailable behavior:
 - Modal analysis.
 - Response spectrum.
 - Time history.
-- Shell/slab/wall elements.
+- Shell/slab/wall solver behavior.
+
+## Area Object MVP Assumptions
+
+Phase 8 area objects are preliminary model data:
+
+- `AreaObject` IDs must be stable and unique within `StructuralModel.AreaObjects`.
+- Boundary nodes must be triangular or quadrilateral and reference existing `Node` IDs.
+- `MaterialId` must reference an existing material and `Thickness` must be positive.
+- `DiaphragmId` is metadata only until a diaphragm constraint service is implemented.
+- Area objects do not contribute stiffness, mass, loads, reactions, design checks, or report result contours.
+- Keep conversion to shell elements behind a dedicated service boundary; do not add area/shell conversion logic directly inside UI event handlers or `StructuralSolver`.
+
+## Section Visualization Assumptions
+
+3D real-section display is visual-only:
+
+- Analysis uses explicit section properties `Area`, `Iy`, `Iz`, and `J`; rendered geometry must not be treated as the source of stiffness.
+- Rectangular and RC rectangular sections use `Width` and `Depth`.
+- I/H and channel/C visual profiles use `Width`, `Depth`, and a simplified uniform `Thickness`.
+- Pipe sections are rendered by outside diameter only in the current viewer slice.
+- Generic sections fall back to `Diameter`, `Width/Depth`, or an equivalent square from `Area`.
+- Rendered section orientation follows member local axes and `RollAngleRadians`.
 
 ## Validation Requirements
 
@@ -91,6 +113,17 @@ Design modules should be explicit about:
 
 Avoid hardcoding code factors deep inside solver or UI event handlers. Prefer dedicated design-code services or versioned data tables.
 
+## Reinforced Concrete MVP Checks
+
+Current RC design checks are preliminary and limited:
+
+- RC flexure supports rectangular concrete members with explicit `RebarArea` and `EffectiveDepth` section properties.
+- Flexure demand comes from `ElementForceResult` as the larger of local `MomentY` and `MomentZ`.
+- Flexure capacity currently uses the simplified expression `phi * As * fy * d`.
+- If concrete material yield strength is not set, reinforcing steel yield defaults to `DesignSettings.DefaultRebarYieldStrength`.
+
+Unsupported RC cases include minimum/maximum reinforcement checks, strain compatibility, compression block depth limits, doubly reinforced sections, bar spacing/layout, shear reinforcement design, torsion, punching shear, column P-M interaction, slenderness effects, and final Thai code calibration.
+
 ## Thai Engineering Scope
 
 The product should be optimized for common Thai workflows:
@@ -111,6 +144,25 @@ Future Thai code modules should cover:
 - serviceability checks
 - strength load combinations
 - Thai report wording and unit preferences
+
+## Thai Load Template Naming
+
+Preliminary Thai load templates use these case IDs:
+
+- `DL`: dead load, including self-weight when requested by the analysis model.
+- `SDL`: superimposed dead load.
+- `LL`: occupancy live load.
+- `RL`: roof live load.
+- `WLX+`, `WLX-`, `WLY+`, `WLY-`: directional wind load placeholders.
+- `EQX+`, `EQX-`, `EQY+`, `EQY-`: directional seismic load placeholders.
+
+Preliminary load combination IDs use these prefixes:
+
+- `SVC-*`: service-level combinations.
+- `STR-*`: strength-level combinations.
+- `UPL-*`: uplift or overturning-oriented combinations.
+
+The Phase 3 template service creates traceable load cases and load combinations only. It does not calculate wind pressure, seismic base shear, exposure factors, site coefficients, response coefficients, or automatic member/area load distribution. Combination factors are preliminary templates and must be reviewed before professional design use.
 
 ## Engineering Output Policy
 

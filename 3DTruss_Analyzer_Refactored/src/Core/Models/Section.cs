@@ -7,6 +7,7 @@ public enum SectionType
     Circular,
     Pipe,
     IShape,
+    Channel,
     Box,
     RC_Rectangular
 }

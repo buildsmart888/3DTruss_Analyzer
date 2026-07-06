@@ -150,7 +150,9 @@ public partial class MainForm : Form
         CreateInputTab(tabInput);
         var tabResults = new TabPage("Analysis Results");
         CreateResultsTab(tabResults);
-        mainTabs.TabPages.AddRange(new[] { tabInput, tabResults });
+        var tabGoPile = new TabPage("GO Pile");
+        tabGoPile.Controls.Add(new GoPilePanel());
+        mainTabs.TabPages.AddRange(new[] { tabInput, tabResults, tabGoPile });
         centerSplit.Panel2.Controls.Add(mainTabs);
 
         propertyGrid = new PropertyGrid

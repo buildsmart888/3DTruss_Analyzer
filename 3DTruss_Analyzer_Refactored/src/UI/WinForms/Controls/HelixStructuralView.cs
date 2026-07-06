@@ -7,6 +7,7 @@ using System.Windows.Media.Media3D;
 using HelixToolkit.Wpf;
 using TrussAnalyzer.Core;
 using TrussAnalyzer.Core.Models;
+using TrussAnalyzer.Core.Visualization;
 using Forms = System.Windows.Forms;
 using MediaPoint3D = System.Windows.Media.Media3D.Point3D;
 using MediaVector3D = System.Windows.Media.Media3D.Vector3D;
@@ -15,6 +16,9 @@ using CoreVector3D = TrussAnalyzer.Core.Models.Vector3D;
 
 public sealed class HelixStructuralView : Forms.UserControl
 {
+    private const double MinimumDiagramScale = 0.25;
+    private const double MaximumDiagramScale = 4.0;
+
     private readonly Forms.ToolStrip _toolbar = new() { Dock = Forms.DockStyle.Top, GripStyle = Forms.ToolStripGripStyle.Hidden };
     private readonly ElementHost _host = new() { Dock = Forms.DockStyle.Fill };
     private readonly HelixViewport3D _viewport = new()
@@ -153,15 +157,40 @@ public sealed class HelixStructuralView : Forms.UserControl
         AddToggle("Load Labels", true, value => _options.Layers.LoadLabels = value);
         AddToggle("Reactions", true, value => _options.Layers.ReactionLabels = value);
         AddToggle("Local Axes", true, value => _options.Layers.LocalAxes = value);
+        AddToggle("Real Sections", false, value => _options.Layers.RealSectionShapes = value);
         AddToggle("Deformed", true, value => _options.Layers.DeformedShape = value);
         AddToggle("Diagrams", true, value => _options.Layers.Diagrams = value);
+        AddToggle("Extrema", true, value => _options.ShowDiagramExtrema = value);
+        AddButton("Scale -", (_, _) => SetDiagramScale(_options.DiagramScale / 1.25));
+        AddButton("Scale +", (_, _) => SetDiagramScale(_options.DiagramScale * 1.25));
+        AddButton("Auto Scale", (_, _) => SetDiagramScale(1.0));
 
-        var modeDrop = new Forms.ToolStripDropDownButton("Mode");
-        foreach (ResultDiagramMode mode in Enum.GetValues<ResultDiagramMode>())
+        var modeDrop = new Forms.ToolStripDropDownButton("Diagram");
+        foreach (var mode in GetToolbarDiagramModes())
         {
-            modeDrop.DropDownItems.Add(mode.ToString(), null, (_, _) => SetDiagramMode(mode));
+            modeDrop.DropDownItems.Add(GetDiagramModeName(mode), null, (_, _) => SetDiagramMode(mode));
         }
         _toolbar.Items.Add(modeDrop);
+    }
+
+    private void SetDiagramScale(double scale)
+    {
+        _options.DiagramScale = Math.Clamp(scale, MinimumDiagramScale, MaximumDiagramScale);
+        RefreshView();
+    }
+
+    private static IEnumerable<ResultDiagramMode> GetToolbarDiagramModes()
+    {
+        yield return ResultDiagramMode.Rendered;
+        yield return ResultDiagramMode.Wireframe;
+        yield return ResultDiagramMode.Deformed;
+        yield return ResultDiagramMode.AxialForce;
+        yield return ResultDiagramMode.ShearY;
+        yield return ResultDiagramMode.ShearZ;
+        yield return ResultDiagramMode.Torsion;
+        yield return ResultDiagramMode.MomentY;
+        yield return ResultDiagramMode.MomentZ;
+        yield return ResultDiagramMode.Utilization;
     }
 
     private void BuildContextMenu()
@@ -292,21 +321,132 @@ public sealed class HelixStructuralView : Forms.UserControl
             var result = GetElementResult(element.Id);
             var brush = GetElementBrush(element, result, maxUtil);
             double diameter = element.Id == _selectedElementId ? 0.075 : 0.045;
-            var pipe = new PipeVisual3D
+            if (_options.Layers.RealSectionShapes && TryAddRealSectionVisual(element, start.Position, end.Position, brush))
             {
-                Point1 = ToMedia(start.Position),
-                Point2 = ToMedia(end.Position),
-                Diameter = diameter,
-                Fill = brush
-            };
-            AddSelectableVisual(pipe, new SelectedModelObject { Type = SelectedModelObjectType.Element, Id = element.Id, Name = $"E{element.Id}" });
+                if (element.Id == _selectedElementId)
+                    AddLine(start.Position, end.Position, Colors.Gold, 5);
+            }
+            else
+            {
+                var pipe = new PipeVisual3D
+                {
+                    Point1 = ToMedia(start.Position),
+                    Point2 = ToMedia(end.Position),
+                    Diameter = diameter,
+                    Fill = brush
+                };
+                AddSelectableVisual(pipe, new SelectedModelObject { Type = SelectedModelObjectType.Element, Id = element.Id, Name = $"E{element.Id}" });
+            }
 
             if (_options.Layers.Labels)
                 AddText(GetElementLabel(element, result), Mid(start.Position, end.Position), Brushes.Black);
 
-            if (_options.Layers.Diagrams && result != null && _options.DiagramMode is ResultDiagramMode.ForceDiagram or ResultDiagramMode.MomentDiagram or ResultDiagramMode.Utilization)
+            if (_options.Layers.Diagrams && result != null && IsResultDiagramMode(_options.DiagramMode))
                 AddResultDiagram(element, start.Position, end.Position, result);
         }
+    }
+
+    private bool TryAddRealSectionVisual(StructuralElement element, CorePoint3D start, CorePoint3D end, Brush brush)
+    {
+        if (_model == null)
+            return false;
+
+        var section = _model.Sections.FirstOrDefault(s => s.Id == element.SectionId);
+        if (section == null)
+            return false;
+
+        var profile = SectionVisualProfileService.Create(section);
+        if (!profile.HasGeometry)
+            return false;
+
+        double scale = Math.Max(0.01, _options.SectionRenderScale);
+        if (profile.IsCircular)
+        {
+            var round = new PipeVisual3D
+            {
+                Point1 = ToMedia(start),
+                Point2 = ToMedia(end),
+                Diameter = Math.Max(0.01, profile.Diameter * scale),
+                Fill = brush
+            };
+            AddSelectableVisual(round, new SelectedModelObject { Type = SelectedModelObjectType.Element, Id = element.Id, Name = $"E{element.Id}" });
+            return true;
+        }
+
+        var axes = StructuralSolver.GetLocalAxes(start, end, element.RollAngleRadians);
+        var mesh = new MeshGeometry3D();
+        foreach (var rectangle in profile.Rectangles)
+            AddExtrudedRectangle(mesh, start, end, axes, rectangle, scale);
+
+        if (mesh.Positions.Count == 0)
+            return false;
+
+        var material = new DiffuseMaterial(brush);
+        var model = new GeometryModel3D(mesh, material) { BackMaterial = material };
+        var visual = new ModelVisual3D { Content = model };
+        AddSelectableVisual(visual, new SelectedModelObject { Type = SelectedModelObjectType.Element, Id = element.Id, Name = $"E{element.Id}" });
+        return true;
+    }
+
+    private static void AddExtrudedRectangle(
+        MeshGeometry3D mesh,
+        CorePoint3D start,
+        CorePoint3D end,
+        LocalAxes axes,
+        SectionVisualRectangle rectangle,
+        double scale)
+    {
+        double halfY = rectangle.WidthY * scale / 2.0;
+        double halfZ = rectangle.DepthZ * scale / 2.0;
+        double centerY = rectangle.CenterY * scale;
+        double centerZ = rectangle.CenterZ * scale;
+        if (halfY <= 0 || halfZ <= 0)
+            return;
+
+        var startCorners = new[]
+        {
+            SectionPoint(start, axes, centerY - halfY, centerZ - halfZ),
+            SectionPoint(start, axes, centerY + halfY, centerZ - halfZ),
+            SectionPoint(start, axes, centerY + halfY, centerZ + halfZ),
+            SectionPoint(start, axes, centerY - halfY, centerZ + halfZ)
+        };
+        var endCorners = new[]
+        {
+            SectionPoint(end, axes, centerY - halfY, centerZ - halfZ),
+            SectionPoint(end, axes, centerY + halfY, centerZ - halfZ),
+            SectionPoint(end, axes, centerY + halfY, centerZ + halfZ),
+            SectionPoint(end, axes, centerY - halfY, centerZ + halfZ)
+        };
+
+        int baseIndex = mesh.Positions.Count;
+        foreach (var point in startCorners.Concat(endCorners))
+            mesh.Positions.Add(ToMedia(point));
+
+        AddQuad(mesh, baseIndex + 0, baseIndex + 1, baseIndex + 2, baseIndex + 3);
+        AddQuad(mesh, baseIndex + 4, baseIndex + 7, baseIndex + 6, baseIndex + 5);
+        AddQuad(mesh, baseIndex + 0, baseIndex + 4, baseIndex + 5, baseIndex + 1);
+        AddQuad(mesh, baseIndex + 1, baseIndex + 5, baseIndex + 6, baseIndex + 2);
+        AddQuad(mesh, baseIndex + 2, baseIndex + 6, baseIndex + 7, baseIndex + 3);
+        AddQuad(mesh, baseIndex + 3, baseIndex + 7, baseIndex + 4, baseIndex + 0);
+    }
+
+    private static CorePoint3D SectionPoint(CorePoint3D origin, LocalAxes axes, double y, double z)
+    {
+        return Offset(
+            origin,
+            axes.YAxis.X * y + axes.ZAxis.X * z,
+            axes.YAxis.Y * y + axes.ZAxis.Y * z,
+            axes.YAxis.Z * y + axes.ZAxis.Z * z);
+    }
+
+    private static void AddQuad(MeshGeometry3D mesh, int a, int b, int c, int d)
+    {
+        mesh.TriangleIndices.Add(a);
+        mesh.TriangleIndices.Add(b);
+        mesh.TriangleIndices.Add(c);
+        mesh.TriangleIndices.Add(a);
+        mesh.TriangleIndices.Add(c);
+        mesh.TriangleIndices.Add(d);
     }
 
     private void AddNodes()
@@ -474,36 +614,58 @@ public sealed class HelixStructuralView : Forms.UserControl
         if (result.StationResults.Count == 0)
             return;
 
+        var definition = GetDiagramDefinition(_options.DiagramMode);
         var (_, span) = GetBounds();
         double maxValue = result.StationResults
-            .Select(GetDiagramStationValue)
+            .Select(s => GetDiagramStationValue(s, definition.Mode))
             .Select(Math.Abs)
             .DefaultIfEmpty(0)
             .Max();
         if (maxValue <= 1e-9)
             return;
 
-        double maxOffset = Math.Min(span * 0.08, 0.75);
+        double maxOffset = Math.Min(span * 0.08, 0.75) * Math.Clamp(_options.DiagramScale, MinimumDiagramScale, MaximumDiagramScale);
         var axes = StructuralSolver.GetLocalAxes(start, end, element.RollAngleRadians);
-        var color = _options.DiagramMode == ResultDiagramMode.MomentDiagram ? Colors.DarkViolet : Colors.DarkOrange;
-        var points = result.StationResults
+        var offsetAxis = GetDiagramOffsetAxis(definition.Mode, axes);
+        var stations = result.StationResults
             .OrderBy(s => s.RelativePosition)
+            .ToList();
+        var points = stations
             .Select(s =>
             {
                 var basePoint = Interpolate(start, end, s.RelativePosition);
-                double value = GetDiagramStationValue(s);
+                double value = GetDiagramStationValue(s, definition.Mode);
                 double offset = value / maxValue * maxOffset;
-                return Offset(basePoint, axes.ZAxis.X * offset, axes.ZAxis.Y * offset, axes.ZAxis.Z * offset);
+                return Offset(basePoint, offsetAxis.X * offset, offsetAxis.Y * offset, offsetAxis.Z * offset);
             })
             .ToList();
 
+        AddLine(start, end, Colors.Gray, 1);
         for (int i = 0; i < points.Count - 1; i++)
-            AddLine(points[i], points[i + 1], color, 2);
+        {
+            double segmentValue = (GetDiagramStationValue(stations[i], definition.Mode) + GetDiagramStationValue(stations[i + 1], definition.Mode)) / 2.0;
+            AddLine(points[i], points[i + 1], segmentValue >= 0 ? definition.PositiveColor : definition.NegativeColor, 2.5);
+        }
 
-        var midStation = result.StationResults.OrderBy(s => Math.Abs(s.RelativePosition - 0.5)).First();
-        var midPoint = points[points.Count / 2];
+        for (int i = 0; i < points.Count; i++)
+        {
+            double value = GetDiagramStationValue(stations[i], definition.Mode);
+            if (Math.Abs(value) > maxValue * 0.02)
+            {
+                var basePoint = Interpolate(start, end, stations[i].RelativePosition);
+                AddLine(basePoint, points[i], value >= 0 ? definition.PositiveColor : definition.NegativeColor, 1);
+            }
+        }
+
         if (_options.Layers.Labels)
-            AddText(FormatDiagramValue(midStation), midPoint, new SolidColorBrush(color));
+        {
+            var midStation = stations.OrderBy(s => Math.Abs(s.RelativePosition - 0.5)).First();
+            var midPoint = points[points.Count / 2];
+            AddText(FormatDiagramValue(midStation, definition), midPoint, new SolidColorBrush(definition.PositiveColor));
+
+            if (_options.ShowDiagramExtrema)
+                AddDiagramExtremaLabels(stations, points, definition);
+        }
     }
 
     private void AddUtilizationMarker(StructuralElement element, CorePoint3D start, CorePoint3D end)
@@ -515,21 +677,94 @@ public sealed class HelixStructuralView : Forms.UserControl
         AddText($"U={utilization:F2}", Offset(Mid(start, end), 0, 0, 0.18), GetUtilizationBrush(element.Id, Math.Max(1e-9, _result?.MaxUtilization ?? 0)));
     }
 
-    private double GetDiagramStationValue(ElementStationResult station)
+    private void AddDiagramExtremaLabels(
+        IReadOnlyList<ElementStationResult> stations,
+        IReadOnlyList<CorePoint3D> points,
+        DiagramDefinition definition)
     {
-        return _options.DiagramMode switch
+        var indexed = stations
+            .Select((station, index) => new { Station = station, Index = index, Value = GetDiagramStationValue(station, definition.Mode) })
+            .ToList();
+
+        var positive = indexed.Where(x => x.Value > 1e-9).OrderByDescending(x => x.Value).FirstOrDefault();
+        var negative = indexed.Where(x => x.Value < -1e-9).OrderBy(x => x.Value).FirstOrDefault();
+
+        if (positive != null)
+            AddText($"max + {FormatDiagramValue(positive.Station, definition)} @ {positive.Station.RelativePosition:F2}", points[positive.Index], new SolidColorBrush(definition.PositiveColor));
+        if (negative != null)
+            AddText($"max - {FormatDiagramValue(negative.Station, definition)} @ {negative.Station.RelativePosition:F2}", points[negative.Index], new SolidColorBrush(definition.NegativeColor));
+    }
+
+    private static double GetDiagramStationValue(ElementStationResult station, ResultDiagramMode mode)
+    {
+        return NormalizeDiagramMode(mode) switch
         {
+            ResultDiagramMode.AxialForce => station.AxialForce,
+            ResultDiagramMode.ShearY => station.ShearY,
+            ResultDiagramMode.ShearZ => station.ShearZ,
+            ResultDiagramMode.Torsion => station.Torsion,
+            ResultDiagramMode.MomentY => station.MomentY,
+            ResultDiagramMode.MomentZ => station.MomentZ,
             ResultDiagramMode.MomentDiagram => Math.Abs(station.MomentZ) >= Math.Abs(station.MomentY) ? station.MomentZ : station.MomentY,
             _ => Math.Abs(station.ShearY) >= Math.Abs(station.ShearZ) ? station.ShearY : station.ShearZ
         };
     }
 
-    private string FormatDiagramValue(ElementStationResult station)
+    private static string FormatDiagramValue(ElementStationResult station, DiagramDefinition definition)
     {
-        return _options.DiagramMode switch
+        double value = GetDiagramStationValue(station, definition.Mode);
+        return definition.UsesMomentUnits
+            ? $"{definition.Symbol}={FormatSignedMoment(value)}"
+            : $"{definition.Symbol}={FormatSignedForce(value)}";
+    }
+
+    private static CoreVector3D GetDiagramOffsetAxis(ResultDiagramMode mode, LocalAxes axes)
+    {
+        return NormalizeDiagramMode(mode) switch
         {
-            ResultDiagramMode.MomentDiagram => $"M={FormatMoment(GetDiagramStationValue(station))}",
-            _ => $"V={FormatForce(GetDiagramStationValue(station))}"
+            ResultDiagramMode.ShearY => axes.YAxis,
+            ResultDiagramMode.ShearZ => axes.ZAxis,
+            ResultDiagramMode.MomentY => axes.ZAxis,
+            ResultDiagramMode.MomentZ => new CoreVector3D(-axes.YAxis.X, -axes.YAxis.Y, -axes.YAxis.Z),
+            _ => axes.ZAxis
+        };
+    }
+
+    private static DiagramDefinition GetDiagramDefinition(ResultDiagramMode mode)
+    {
+        return NormalizeDiagramMode(mode) switch
+        {
+            ResultDiagramMode.AxialForce => new DiagramDefinition(ResultDiagramMode.AxialForce, "N", Colors.RoyalBlue, Colors.Firebrick, false),
+            ResultDiagramMode.ShearY => new DiagramDefinition(ResultDiagramMode.ShearY, "Vy", Colors.DarkOrange, Colors.SaddleBrown, false),
+            ResultDiagramMode.ShearZ => new DiagramDefinition(ResultDiagramMode.ShearZ, "Vz", Colors.OrangeRed, Colors.DarkRed, false),
+            ResultDiagramMode.Torsion => new DiagramDefinition(ResultDiagramMode.Torsion, "T", Colors.Teal, Colors.DarkViolet, true),
+            ResultDiagramMode.MomentY => new DiagramDefinition(ResultDiagramMode.MomentY, "My", Colors.DarkViolet, Colors.MediumVioletRed, true),
+            ResultDiagramMode.MomentZ => new DiagramDefinition(ResultDiagramMode.MomentZ, "Mz", Colors.Purple, Colors.Crimson, true),
+            ResultDiagramMode.MomentDiagram => new DiagramDefinition(ResultDiagramMode.MomentDiagram, "M", Colors.DarkViolet, Colors.MediumVioletRed, true),
+            _ => new DiagramDefinition(ResultDiagramMode.ForceDiagram, "V", Colors.DarkOrange, Colors.SaddleBrown, false)
+        };
+    }
+
+    private static bool IsResultDiagramMode(ResultDiagramMode mode)
+    {
+        return mode is ResultDiagramMode.AxialForce
+            or ResultDiagramMode.ShearY
+            or ResultDiagramMode.ShearZ
+            or ResultDiagramMode.Torsion
+            or ResultDiagramMode.MomentY
+            or ResultDiagramMode.MomentZ
+            or ResultDiagramMode.ForceDiagram
+            or ResultDiagramMode.MomentDiagram
+            or ResultDiagramMode.Utilization;
+    }
+
+    private static ResultDiagramMode NormalizeDiagramMode(ResultDiagramMode mode)
+    {
+        return mode switch
+        {
+            ResultDiagramMode.ForceDiagram => ResultDiagramMode.ShearY,
+            ResultDiagramMode.MomentDiagram => ResultDiagramMode.MomentZ,
+            _ => mode
         };
     }
 
@@ -543,6 +778,14 @@ public sealed class HelixStructuralView : Forms.UserControl
         AddText("Right-handed Z-up | X=red, Y=green, Z=blue | Gravity=-Z", p, Brushes.DimGray);
         if (_result != null)
             AddText($"Result: {_result.LoadCaseName} | Max U={_result.MaxDisplacement * 1000:F3} mm | Max Util={_result.MaxUtilization:F3}", Offset(p, 0, 0, -span * 0.05), Brushes.DimGray);
+        if (_result != null && IsResultDiagramMode(_options.DiagramMode) && _options.DiagramMode != ResultDiagramMode.Utilization)
+        {
+            var definition = GetDiagramDefinition(_options.DiagramMode);
+            AddText(
+                $"Diagram: {GetDiagramModeName(_options.DiagramMode)} | +={ColorName(definition.PositiveColor)} | -={ColorName(definition.NegativeColor)} | Scale={_options.DiagramScale:F2}x",
+                Offset(p, 0, 0, -span * 0.10),
+                Brushes.DimGray);
+        }
     }
 
     private Brush GetElementBrush(StructuralElement element, ElementForceResult? result, double maxUtil)
@@ -556,7 +799,11 @@ public sealed class HelixStructuralView : Forms.UserControl
 
         return _options.DiagramMode switch
         {
-            ResultDiagramMode.MomentDiagram when Math.Max(result.MomentY, result.MomentZ) > 1e-9 => Brushes.DarkViolet,
+            ResultDiagramMode.AxialForce when result.AxialForce > 1e-6 => Brushes.RoyalBlue,
+            ResultDiagramMode.AxialForce when result.AxialForce < -1e-6 => Brushes.Firebrick,
+            ResultDiagramMode.ShearY or ResultDiagramMode.ShearZ or ResultDiagramMode.ForceDiagram => Brushes.DarkOrange,
+            ResultDiagramMode.Torsion => Brushes.Teal,
+            ResultDiagramMode.MomentY or ResultDiagramMode.MomentZ or ResultDiagramMode.MomentDiagram => Brushes.DarkViolet,
             ResultDiagramMode.Utilization => GetUtilizationBrush(element.Id, maxUtil),
             _ when result.AxialForce > 1e-6 => Brushes.RoyalBlue,
             _ when result.AxialForce < -1e-6 => Brushes.Firebrick,
@@ -681,6 +928,44 @@ public sealed class HelixStructuralView : Forms.UserControl
     private static string FormatForce(double force) => Math.Abs(force) >= 1000 ? $"{force / 1000:F2} kN" : $"{force:F1} N";
     private static string FormatMoment(double moment) => Math.Abs(moment) >= 1000 ? $"{moment / 1000:F2} kN-m" : $"{moment:F1} N-m";
     private static string FormatDistributedForce(double force) => Math.Abs(force) >= 1000 ? $"{force / 1000:F2} kN/m" : $"{force:F1} N/m";
+    private static string FormatSignedForce(double force) => force >= 0 ? $"+{FormatForce(force)}" : FormatForce(force);
+    private static string FormatSignedMoment(double moment) => moment >= 0 ? $"+{FormatMoment(moment)}" : FormatMoment(moment);
+
+    private static string GetDiagramModeName(ResultDiagramMode mode)
+    {
+        return mode switch
+        {
+            ResultDiagramMode.Rendered => "Rendered",
+            ResultDiagramMode.Wireframe => "Wireframe",
+            ResultDiagramMode.Deformed => "Deformed",
+            ResultDiagramMode.AxialForce => "Axial N",
+            ResultDiagramMode.ShearY => "Shear Vy",
+            ResultDiagramMode.ShearZ => "Shear Vz",
+            ResultDiagramMode.Torsion => "Torsion T",
+            ResultDiagramMode.MomentY => "Moment My",
+            ResultDiagramMode.MomentZ => "Moment Mz",
+            ResultDiagramMode.ForceDiagram => "Force V envelope",
+            ResultDiagramMode.MomentDiagram => "Moment envelope",
+            ResultDiagramMode.Utilization => "Utilization",
+            _ => mode.ToString()
+        };
+    }
+
+    private static string ColorName(Color color)
+    {
+        if (color == Colors.RoyalBlue) return "blue";
+        if (color == Colors.Firebrick) return "red";
+        if (color == Colors.DarkOrange) return "orange";
+        if (color == Colors.SaddleBrown) return "brown";
+        if (color == Colors.OrangeRed) return "orange-red";
+        if (color == Colors.DarkRed) return "dark red";
+        if (color == Colors.Teal) return "teal";
+        if (color == Colors.DarkViolet) return "violet";
+        if (color == Colors.MediumVioletRed) return "magenta";
+        if (color == Colors.Purple) return "purple";
+        if (color == Colors.Crimson) return "crimson";
+        return color.ToString();
+    }
 
     private static string FormatVectorForce(CoreVector3D force)
     {
@@ -708,6 +993,13 @@ public sealed class HelixStructuralView : Forms.UserControl
         if (Math.Abs(force.Z) > 1e-9) parts.Add($"wz={FormatDistributedForce(force.Z)}");
         return parts.Count == 0 ? "0 N/m" : string.Join(", ", parts);
     }
+
+    private sealed record DiagramDefinition(
+        ResultDiagramMode Mode,
+        string Symbol,
+        Color PositiveColor,
+        Color NegativeColor,
+        bool UsesMomentUnits);
 }
 
 public sealed class ViewerCommandRequestedEventArgs : EventArgs

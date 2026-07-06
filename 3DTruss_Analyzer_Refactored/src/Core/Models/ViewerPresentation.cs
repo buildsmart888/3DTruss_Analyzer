@@ -10,6 +10,12 @@ public enum ResultDiagramMode
     Rendered,
     Wireframe,
     Deformed,
+    AxialForce,
+    ShearY,
+    ShearZ,
+    Torsion,
+    MomentY,
+    MomentZ,
     ForceDiagram,
     MomentDiagram,
     Utilization
@@ -20,6 +26,7 @@ public enum SelectedModelObjectType
     None,
     Node,
     Element,
+    AreaObject,
     Material,
     Section,
     LoadCase,
@@ -38,6 +45,7 @@ public class ViewerLayerVisibility
     public bool ReactionLabels { get; set; } = true;
     public bool Labels { get; set; } = true;
     public bool LocalAxes { get; set; } = true;
+    public bool RealSectionShapes { get; set; }
     public bool DeformedShape { get; set; } = true;
     public bool Diagrams { get; set; } = true;
     public bool Grid { get; set; } = true;
@@ -49,6 +57,9 @@ public class ViewerDisplayOptions
     public ViewerLayerVisibility Layers { get; set; } = new();
     public ResultDiagramMode DiagramMode { get; set; } = ResultDiagramMode.Utilization;
     public double DeformationScale { get; set; } = 1.0;
+    public double DiagramScale { get; set; } = 1.0;
+    public double SectionRenderScale { get; set; } = 1.0;
+    public bool ShowDiagramExtrema { get; set; } = true;
     public string LabelDensity { get; set; } = "Normal";
 }
 

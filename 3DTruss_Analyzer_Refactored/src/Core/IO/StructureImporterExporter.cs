@@ -88,6 +88,18 @@ public static class StructureImporterExporter
                     e.Releases.EndMomentZ
                 }
             }),
+            areaObjects = model.AreaObjects.Select(a => new
+            {
+                a.Id,
+                a.Name,
+                type = a.Type.ToString(),
+                nodeIds = a.NodeIds,
+                a.MaterialId,
+                a.Thickness,
+                a.DiaphragmId,
+                analysisBehavior = a.AnalysisBehavior.ToString(),
+                a.Description
+            }),
             loadCases = model.LoadCases,
             loadCombinations = model.LoadCombinations,
             designSettings = model.DesignSettings,
@@ -292,6 +304,29 @@ public static class StructureImporterExporter
                         RollAngleRadians = rollAngle,
                         Releases = releases
                     });
+            }
+        }
+
+        if (TryGetPropertyCaseInsensitive(root, "areaObjects", out var areaObjectsElem))
+        {
+            foreach (var a in areaObjectsElem.EnumerateArray())
+            {
+                model.AreaObjects.Add(new AreaObject
+                {
+                    Id = GetPropertyCaseInsensitive(a, "id").GetInt32(),
+                    Name = GetStringOrDefault(a, "name", "Area Object"),
+                    Type = Enum.Parse<AreaObjectType>(GetStringOrDefault(a, "type", "Slab"), ignoreCase: true),
+                    NodeIds = TryGetPropertyCaseInsensitive(a, "nodeIds", out var nodeIdsElem) && nodeIdsElem.ValueKind == JsonValueKind.Array
+                        ? nodeIdsElem.EnumerateArray().Select(n => n.GetInt32()).ToList()
+                        : new List<int>(),
+                    MaterialId = GetIntOrDefault(a, "materialId"),
+                    Thickness = GetDoubleOrDefault(a, "thickness"),
+                    DiaphragmId = GetStringOrDefault(a, "diaphragmId", string.Empty),
+                    AnalysisBehavior = Enum.Parse<AreaObjectAnalysisBehavior>(
+                        GetStringOrDefault(a, "analysisBehavior", nameof(AreaObjectAnalysisBehavior.NotAnalyzed)),
+                        ignoreCase: true),
+                    Description = GetStringOrDefault(a, "description", string.Empty)
+                });
             }
         }
 

@@ -91,87 +91,90 @@ namespace TrussAnalyzer.Core.Reporting
         private string BuildContentStream()
         {
             var sb = new StringBuilder();
+            var snapshot = AnalysisReportSnapshot.FromAnalysisResult(_result);
             sb.AppendLine("BT");
             sb.AppendLine("/F1 16 Tf");
             sb.AppendLine("50 750 Td");
-            sb.AppendLine("(3D Truss Analysis Report) Tj");
+            AppendPdfLine(sb, snapshot.Title);
             
             sb.AppendLine("/F1 12 Tf");
-            sb.AppendLine("0 -30 Td");
-            sb.AppendLine($"(Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}) Tj");
+            AppendPdfLine(sb, $"Date: {DateTime.Now:yyyy-MM-dd HH:mm:ss}", -30);
             
-            sb.AppendLine("0 -40 Td");
-            sb.AppendLine("(Project Summary) Tj");
+            AppendPdfLine(sb, "Project Summary", -40);
             sb.AppendLine("/F1 10 Tf");
-            sb.AppendLine("0 -20 Td");
-            sb.AppendLine($"(Total Nodes: {_result.Nodes.Count}) Tj");
-            sb.AppendLine("0 -15 Td");
-            sb.AppendLine($"(Total Elements: {_result.Elements.Count}) Tj");
-            sb.AppendLine("0 -15 Td");
-            sb.AppendLine($"(Load Case: {EscapePdfText(_result.LoadCaseName)}) Tj");
+            AppendPdfLine(sb, $"Total Nodes: {snapshot.NodeCount}", -20);
+            AppendPdfLine(sb, $"Total Elements: {snapshot.ElementCount}", -15);
+            AppendPdfLine(sb, $"Load Case: {snapshot.LoadCaseName}", -15);
+            AppendPdfLine(sb, $"Max Displacement: {snapshot.MaxDisplacement:E4} m", -15);
+
+            AppendPdfLine(sb, "Design Criteria and Limitations", -30);
+            foreach (string limitation in snapshot.Limitations)
+                AppendPdfLine(sb, limitation, -15);
+
+            AppendPdfLine(sb, "Member Force Envelope", -30);
+            AppendPdfLine(sb, "Units: axial force=N, stress=MPa, utilization=ratio", -15);
+            foreach (var row in snapshot.MemberForceEnvelope.Take(6))
+            {
+                AppendPdfLine(sb, $"Element {row.ElementId}: N={row.AxialForce:F2}, Stress={row.Stress / 1e6:F3}, Util={row.Utilization:F3}", -15);
+            }
             
-            sb.AppendLine("0 -30 Td");
-            sb.AppendLine("(Node Displacements) Tj");
+            AppendPdfLine(sb, "Node Displacements", -30);
             sb.AppendLine("/F1 8 Tf");
             double y = 520;
             foreach (var node in _result.Nodes)
             {
                 var disp = node.Displacement;
-                sb.AppendLine($"0 -15 Td");
-                sb.AppendLine($"(Node {node.Id}: DX={disp.X:E4}, DY={disp.Y:E4}, DZ={disp.Z:E4}) Tj");
+                AppendPdfLine(sb, $"Node {node.Id}: DX={disp.X:E4}, DY={disp.Y:E4}, DZ={disp.Z:E4}", -15);
                 y -= 15;
                 if (y < 200) break; // Limit displayed nodes
             }
             
-            sb.AppendLine("0 -30 Td");
             sb.AppendLine("/F1 12 Tf");
-            sb.AppendLine("(Element Forces) Tj");
+            AppendPdfLine(sb, "Element Forces", -30);
             sb.AppendLine("/F1 8 Tf");
             y = 350;
             foreach (var elem in _result.Elements)
             {
                 string state = elem.AxialForce > 0 ? "Tension" : (elem.AxialForce < 0 ? "Compression" : "Zero");
-                sb.AppendLine($"0 -15 Td");
-            sb.AppendLine($"(Element {elem.Id}: {elem.AxialForce:F2} N, {elem.Stress / 1e6:F3} MPa [{state}]) Tj");
+                AppendPdfLine(sb, $"Element {elem.Id}: {elem.AxialForce:F2} N, {elem.Stress / 1e6:F3} MPa [{state}]", -15);
                 y -= 15;
                 if (y < 150) break; // Limit displayed elements
             }
             
-            sb.AppendLine("0 -30 Td");
             sb.AppendLine("/F1 12 Tf");
-            sb.AppendLine("(Support Reactions) Tj");
+            AppendPdfLine(sb, "Support Reactions", -30);
             sb.AppendLine("/F1 8 Tf");
             foreach (var node in _result.Nodes.Where(n => n.IsConstrained))
             {
                 var reaction = node.ReactionForce;
-                sb.AppendLine($"0 -15 Td");
-                sb.AppendLine($"(Node {node.Id}: RX={reaction.X:F2}, RY={reaction.Y:F2}, RZ={reaction.Z:F2}) Tj");
+                AppendPdfLine(sb, $"Node {node.Id}: RX={reaction.X:F2}, RY={reaction.Y:F2}, RZ={reaction.Z:F2}", -15);
             }
             
-            sb.AppendLine("0 -40 Td");
             sb.AppendLine("/F1 10 Tf");
-            sb.AppendLine("(Equilibrium Check) Tj");
+            AppendPdfLine(sb, "Equilibrium Check", -40);
             sb.AppendLine("/F1 8 Tf");
-            sb.AppendLine($"0 -15 Td");
-            sb.AppendLine($"(Sum FX: {_result.Equilibrium.SumFX:E6} N) Tj");
-            sb.AppendLine("0 -15 Td");
-            sb.AppendLine($"(Sum FY: {_result.Equilibrium.SumFY:E6} N) Tj");
-            sb.AppendLine("0 -15 Td");
-            sb.AppendLine($"(Sum FZ: {_result.Equilibrium.SumFZ:E6} N) Tj");
+            AppendPdfLine(sb, $"Sum FX: {_result.Equilibrium.SumFX:E6} N", -15);
+            AppendPdfLine(sb, $"Sum FY: {_result.Equilibrium.SumFY:E6} N", -15);
+            AppendPdfLine(sb, $"Sum FZ: {_result.Equilibrium.SumFZ:E6} N", -15);
 
-            sb.AppendLine("0 -30 Td");
             sb.AppendLine("/F1 12 Tf");
-            sb.AppendLine("(Safety Checks) Tj");
+            AppendPdfLine(sb, "Safety Checks", -30);
             sb.AppendLine("/F1 8 Tf");
             foreach (var check in _result.SafetyChecks.ElementChecks.Take(10))
             {
-                sb.AppendLine("0 -15 Td");
-                sb.AppendLine($"(Element {check.ElementId}: Util={check.UtilizationRatio:F3}, {EscapePdfText(check.Status)}) Tj");
+                AppendPdfLine(sb, $"Element {check.ElementId}: Util={check.UtilizationRatio:F3}, {check.Status}", -15);
             }
             
             sb.AppendLine("ET");
             
             return sb.ToString();
+        }
+
+        private static void AppendPdfLine(StringBuilder sb, string text, int yOffset = 0)
+        {
+            if (yOffset != 0)
+                sb.AppendLine($"0 {yOffset} Td");
+            sb.AppendLine($"({EscapePdfText(text)}) Tj");
         }
 
         private static string EscapePdfText(string text)

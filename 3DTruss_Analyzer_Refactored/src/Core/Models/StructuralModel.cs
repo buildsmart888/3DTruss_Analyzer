@@ -8,6 +8,7 @@ public class StructuralModel
     public int SchemaVersion { get; init; } = 2;
     public List<Node> Nodes { get; init; } = new();
     public List<StructuralElement> Elements { get; init; } = new();
+    public List<AreaObject> AreaObjects { get; init; } = new();
     public List<Material> Materials { get; init; } = new();
     public List<Section> Sections { get; init; } = new();
     public List<LoadCase> LoadCases { get; init; } = new();

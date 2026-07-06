@@ -40,6 +40,7 @@ Use this checklist before tagging or distributing a build.
 - PDF/report generation smoke test passes.
 - Units are shown clearly.
 - Design limitations are included.
+- Member force envelope section is present in generated PDF output.
 - Project metadata is included when available.
 
 ## Documentation
@@ -55,4 +56,3 @@ Use this checklist before tagging or distributing a build.
 - Installer/package is generated if applicable.
 - Example models are included.
 - Required runtime dependencies are documented.
-

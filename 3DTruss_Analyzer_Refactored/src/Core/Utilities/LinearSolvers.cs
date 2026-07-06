@@ -23,3 +23,24 @@ public sealed class SparsePlaceholderSolver : ILinearSystemSolver
         return Matrix.SolveAuto(matrix, rhs);
     }
 }
+
+public sealed class SparsePrototypeLinearSystemSolver : ILinearSystemSolver
+{
+    private readonly ILinearSystemSolver _fallbackSolver;
+
+    public SparsePrototypeLinearSystemSolver(ILinearSystemSolver? fallbackSolver = null)
+    {
+        _fallbackSolver = fallbackSolver ?? new DenseLinearSystemSolver();
+    }
+
+    public string Name => $"Sparse prototype adapter ({_fallbackSolver.Name} fallback)";
+
+    public double[] Solve(double[,] matrix, double[] rhs)
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(rhs);
+
+        var sparse = SparseMatrix.FromDense(matrix);
+        return _fallbackSolver.Solve(sparse.ToDense(), rhs);
+    }
+}

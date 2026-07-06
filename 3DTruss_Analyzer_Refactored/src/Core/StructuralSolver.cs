@@ -1,5 +1,7 @@
 namespace TrussAnalyzer.Core;
 
+using TrussAnalyzer.Core.Design.Concrete;
+using TrussAnalyzer.Core.Design.Steel;
 using TrussAnalyzer.Core.Models;
 using TrussAnalyzer.Core.Analysis.Validation;
 using TrussAnalyzer.Core.Utilities;
@@ -520,7 +522,9 @@ public class StructuralSolver
         }
 
         var elementResults = _model.Elements.Select(RecoverElementForces).ToList();
-        var checks = elementResults.SelectMany(r => RunDesignChecks(r, _elements[r.ElementId])).ToList();
+        var steelDesignService = new SteelDesignService(_model);
+        var concreteDesignService = new ConcreteDesignService(_model);
+        var checks = elementResults.SelectMany(r => RunDesignChecks(r, _elements[r.ElementId], steelDesignService, concreteDesignService)).ToList();
         var equilibrium = CalculateEquilibrium(nodeResults);
 
         return new StructuralAnalysisResult
@@ -624,7 +628,11 @@ public class StructuralSolver
         return stations;
     }
 
-    private IEnumerable<DesignCheckResult> RunDesignChecks(ElementForceResult forces, StructuralElement element)
+    private IEnumerable<DesignCheckResult> RunDesignChecks(
+        ElementForceResult forces,
+        StructuralElement element,
+        SteelDesignService steelDesignService,
+        ConcreteDesignService concreteDesignService)
     {
         var material = _materials[element.MaterialId];
         var section = _sections[element.SectionId];
@@ -632,7 +640,7 @@ public class StructuralSolver
         if (material.Type == MaterialType.Concrete)
         {
             yield return RunConcreteAxialCheck(forces, section, material);
-            yield return RunConcreteFlexureCheck(forces, section, material);
+            yield return concreteDesignService.DesignFlexure(forces);
             yield return RunConcreteShearCheck(forces, section, material, _model.DesignSettings);
             yield break;
         }
@@ -643,41 +651,8 @@ public class StructuralSolver
             yield break;
         }
 
-        double fy = material.YieldStrength > 0 ? material.YieldStrength : _model.DesignSettings.DefaultSteelYieldStrength;
-        if (fy <= 0)
-        {
-            yield return new DesignCheckResult { ElementId = element.Id, CheckType = "Yield stress", Status = DesignCheckStatus.MissingData, Notes = "Yield strength is required." };
-            yield break;
-        }
-
-        double axialDemand = Math.Abs(forces.AxialForce) / section.Area;
-        yield return MakeCheck(element.Id, "Steel tension/yield", axialDemand, fy * _model.DesignSettings.SteelResistanceFactor, "Preliminary AISC-inspired axial stress check.");
-
-        double flexuralDemand = FlexuralStressDemand(forces, section);
-        yield return MakeCheck(element.Id, "Steel flexure", flexuralDemand, fy * _model.DesignSettings.SteelResistanceFactor, "Preliminary bending stress check.");
-
-        double r = Math.Sqrt(Math.Min(section.Iy, section.Iz) / section.Area);
-        double length = _nodes[element.StartNodeId].Position.DistanceTo(_nodes[element.EndNodeId].Position);
-        double slenderness = r > 0 ? _model.DesignSettings.CompressionEffectiveLengthFactor * length / r : double.PositiveInfinity;
-        double fe = slenderness > 0 ? Math.PI * Math.PI * material.YoungsModulus / (slenderness * slenderness) : fy;
-        double compressionCapacity = Math.Min(fy, 0.877 * fe);
-        yield return MakeCheck(element.Id, "Steel compression buckling", axialDemand, compressionCapacity * _model.DesignSettings.SteelResistanceFactor, $"Preliminary slenderness check, KL/r={slenderness:F1}.");
-
-        double shearDemand = Math.Max(forces.ShearY, forces.ShearZ) / section.Area;
-        yield return MakeCheck(element.Id, "Steel shear", shearDemand, 0.6 * fy * _model.DesignSettings.SteelResistanceFactor, "Preliminary shear stress check.");
-
-        double factoredFy = fy * _model.DesignSettings.SteelResistanceFactor;
-        double interaction = axialDemand / factoredFy + flexuralDemand / factoredFy;
-        yield return new DesignCheckResult
-        {
-            ElementId = element.Id,
-            CheckType = "Axial + bending",
-            Demand = interaction,
-            Capacity = 1,
-            Utilization = interaction,
-            Status = interaction <= 1 ? DesignCheckStatus.OK : DesignCheckStatus.NG,
-            Notes = "Preliminary linear interaction check, not final code design."
-        };
+        foreach (var check in steelDesignService.DesignElement(forces))
+            yield return check;
     }
 
     private static DesignCheckResult RunConcreteAxialCheck(ElementForceResult forces, Section section, Material material)
@@ -688,25 +663,6 @@ public class StructuralSolver
         double demand = Math.Abs(forces.AxialForce) / section.Area;
         double capacity = 0.35 * material.ConcreteCompressiveStrength;
         return MakeCheck(forces.ElementId, "RC axial stress", demand, capacity, "Simplified ACI-inspired axial stress check.");
-    }
-
-    private static DesignCheckResult RunConcreteFlexureCheck(ElementForceResult forces, Section section, Material material)
-    {
-        if (section.RebarArea <= 0 || section.EffectiveDepth <= 0)
-        {
-            return new DesignCheckResult
-            {
-                ElementId = forces.ElementId,
-                CheckType = "RC flexure",
-                Status = DesignCheckStatus.MissingData,
-                Notes = "Rebar area and effective depth are required for RC flexure."
-            };
-        }
-
-        double fy = material.YieldStrength > 0 ? material.YieldStrength : 420e6;
-        double capacity = 0.9 * section.RebarArea * fy * section.EffectiveDepth;
-        double demand = Math.Max(forces.MomentY, forces.MomentZ);
-        return MakeCheck(forces.ElementId, "RC flexure", demand, capacity, "Simplified rectangular RC flexural capacity.");
     }
 
     private static DesignCheckResult RunConcreteShearCheck(ElementForceResult forces, Section section, Material material, DesignSettings settings)
@@ -751,15 +707,6 @@ public class StructuralSolver
         Status = DesignCheckStatus.NotApplicable,
         Notes = notes
     };
-
-    private static double FlexuralStressDemand(ElementForceResult forces, Section section)
-    {
-        double sy = section.Depth > 0 ? section.Iy / (section.Depth / 2.0) : Math.Sqrt(section.Area * section.Iy);
-        double sz = section.Width > 0 ? section.Iz / (section.Width / 2.0) : Math.Sqrt(section.Area * section.Iz);
-        double myStress = sy > 0 ? forces.MomentY / sy : 0;
-        double mzStress = sz > 0 ? forces.MomentZ / sz : 0;
-        return Math.Abs(myStress) + Math.Abs(mzStress);
-    }
 
     private EquilibriumCheck CalculateEquilibrium(List<StructuralNodeResult> nodeResults)
     {

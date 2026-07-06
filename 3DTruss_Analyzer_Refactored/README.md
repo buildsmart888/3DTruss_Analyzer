@@ -21,10 +21,15 @@ Current MVP capabilities:
 - `FrameElement3D`: 6 DOF per node with axial, torsion, bending, shear, and end-force recovery.
 - `StructuralModel` container for nodes, elements, materials, sections, load cases, load combinations, and load items.
 - Nodal force/moment loads, member point loads, member distributed loads, and self-weight.
+- Preliminary Thai load case and load combination templates for DL, SDL, LL, RL, directional wind, and directional seismic placeholders.
 - Schema v2 JSON import/export while still importing legacy truss JSON.
 - Frame member moment releases, local roll angle, local-axis helpers, and member load recovery.
 - Configurable frame force-result station count for denser axial/shear/torsion/moment diagram DTOs.
+- Optional 3D real-section visualization for rectangular/RC, circular, pipe, I/H, C/channel, and box section placeholders.
 - Preliminary steel/aluminum/custom stress checks and simplified RC axial/flexure/shear checks.
+- Preliminary `ConcreteDesignService` for RC rectangular member flexure checks using analysis result moments and section reinforcement data.
+- Basic PDF reporting with project summary, criteria/limitations, displacement/reaction tables, member force envelope, equilibrium, and safety check sections.
+- Preliminary GO Pile eccentric pile foundation module for F1-F5 layouts, pile reaction checks, basic footing reinforcement sizing, and HelixToolkit 3D visualization.
 - Solver diagnostics and a replaceable linear solver interface with dense Gaussian elimination as the default.
 - WinForms engineering desktop shell with model editor panels and a WPF/HelixToolkit 3D viewer.
 - Right-handed Z-up viewer convention: X/Y are plan axes, Z is vertical, and gravity acts in global `-Z`.
@@ -141,11 +146,13 @@ Console.WriteLine(result.NodeResults.Single(n => n.NodeId == 2).Displacement.Y);
 ## Known Limitations
 
 - Linear elastic, small-displacement analysis only.
-- No shell, slab, wall, plate, solid, cable, spring, or nonlinear concrete cracking elements.
+- Slab, wall, shell, and diaphragm area objects can be stored as model placeholders, but they are not assembled into analysis stiffness, meshed, loaded, or reported as shell results yet.
+- No plate solver, solid, cable, spring, or nonlinear concrete cracking elements.
 - No P-Delta, plastic hinge, modal, dynamic, time-history, response-spectrum, or nonlinear analysis.
 - No automatic wind/seismic load generator yet.
 - Frame formulation is an MVP Euler-Bernoulli beam-column implementation without rigid offsets or shear deformation.
 - Member force station results are linearly interpolated between recovered local end forces; denser stations improve diagram sampling density but are not a full distributed-load diagram engine.
+- Real-section rendering is visual only; it does not change stiffness, capacity, section property calculation, or solver behavior.
 - Dense matrix solving is currently used; true sparse storage and sparse solving are future work.
 - Design checks are preliminary and must not be used as final professional design output.
 - The PDF writer is a basic report generator, not a production report layout engine.

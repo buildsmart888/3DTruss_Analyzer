@@ -1,10 +1,11 @@
 namespace TrussAnalyzer.Core.Reporting;
 
+using TrussAnalyzer.Core;
 using TrussAnalyzer.Core.Models;
 
 public sealed class AnalysisReportSnapshot
 {
-    public string Title { get; init; } = "3D Truss Analysis Report";
+    public string Title { get; init; } = $"{ProductIdentity.Name} Analysis Report";
     public string LoadCaseName { get; init; } = "Default";
     public int NodeCount { get; init; }
     public int ElementCount { get; init; }
@@ -55,4 +56,3 @@ public sealed class ReportMemberForceRow
     public double Stress { get; init; }
     public double Utilization { get; init; }
 }
-

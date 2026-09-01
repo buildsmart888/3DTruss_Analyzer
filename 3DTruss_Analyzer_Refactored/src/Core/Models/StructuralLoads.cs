@@ -49,3 +49,10 @@ public sealed class MemberDistributedLoad : LoadItem
     public double StartRelativeDistance { get; init; } = 0.0;
     public double EndRelativeDistance { get; init; } = 1.0;
 }
+
+public sealed class MemberTemperatureLoad : LoadItem
+{
+    public int ElementId { get; init; }
+    public double TemperatureChange { get; init; }
+    public double ThermalExpansionCoefficient { get; init; }
+}

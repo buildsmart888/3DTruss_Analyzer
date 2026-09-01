@@ -21,6 +21,7 @@ public static class StructureImporterExporter
             schemaVersion = 2,
             coordinateSystem = model.CoordinateSystem.ToString(),
             displaySettings = model.DisplaySettings,
+            frameAnalysisOptions = model.FrameAnalysisOptions,
             activeLoadCaseId = model.ActiveLoadCaseId,
             resultStationCount = model.ResultStationCount,
             nodes = model.Nodes.Select(n => new
@@ -35,6 +36,12 @@ public static class StructureImporterExporter
                 fixRx = n.ConstraintRX,
                 fixRy = n.ConstraintRY,
                 fixRz = n.ConstraintRZ,
+                prescribedUx = n.PrescribedDisplacement.X,
+                prescribedUy = n.PrescribedDisplacement.Y,
+                prescribedUz = n.PrescribedDisplacement.Z,
+                prescribedRx = n.PrescribedRotation.X,
+                prescribedRy = n.PrescribedRotation.Y,
+                prescribedRz = n.PrescribedRotation.Z,
                 fx = n.AppliedForce.X,
                 fy = n.AppliedForce.Y,
                 fz = n.AppliedForce.Z,
@@ -80,6 +87,10 @@ public static class StructureImporterExporter
                 materialId = e.MaterialId,
                 sectionId = e.SectionId,
                 rollAngleRadians = e.RollAngleRadians,
+                startRigidEndOffset = e.StartRigidEndOffset,
+                endRigidEndOffset = e.EndRigidEndOffset,
+                startInsertionPointLocal = e.StartInsertionPointLocal,
+                endInsertionPointLocal = e.EndInsertionPointLocal,
                 releases = new
                 {
                     e.Releases.StartMomentY,
@@ -123,7 +134,9 @@ public static class StructureImporterExporter
                     wz = 0.0,
                     direction = "",
                     startRelativeDistance = 0.0,
-                    endRelativeDistance = 1.0
+                    endRelativeDistance = 1.0,
+                    temperatureChange = 0.0,
+                    thermalExpansionCoefficient = 0.0
                 },
                 MemberPointLoad p => new
                 {
@@ -143,7 +156,9 @@ public static class StructureImporterExporter
                     wz = 0.0,
                     direction = p.Direction.ToString(),
                     startRelativeDistance = 0.0,
-                    endRelativeDistance = 1.0
+                    endRelativeDistance = 1.0,
+                    temperatureChange = 0.0,
+                    thermalExpansionCoefficient = 0.0
                 },
                 MemberDistributedLoad d => new
                 {
@@ -163,7 +178,31 @@ public static class StructureImporterExporter
                     wz = d.ForcePerLength.Z,
                     direction = d.Direction.ToString(),
                     startRelativeDistance = d.StartRelativeDistance,
-                    endRelativeDistance = d.EndRelativeDistance
+                    endRelativeDistance = d.EndRelativeDistance,
+                    temperatureChange = 0.0,
+                    thermalExpansionCoefficient = 0.0
+                },
+                MemberTemperatureLoad t => new
+                {
+                    kind = "MemberTemperature",
+                    t.LoadCaseId,
+                    nodeId = 0,
+                    fx = 0.0,
+                    fy = 0.0,
+                    fz = 0.0,
+                    mx = 0.0,
+                    my = 0.0,
+                    mz = 0.0,
+                    elementId = t.ElementId,
+                    relativeDistance = 0.0,
+                    wx = 0.0,
+                    wy = 0.0,
+                    wz = 0.0,
+                    direction = "",
+                    startRelativeDistance = 0.0,
+                    endRelativeDistance = 1.0,
+                    temperatureChange = t.TemperatureChange,
+                    thermalExpansionCoefficient = t.ThermalExpansionCoefficient
                 },
                 _ => throw new NotSupportedException($"Unsupported load item type {l.GetType().Name}.")
             })
@@ -201,6 +240,13 @@ public static class StructureImporterExporter
                 model.DisplaySettings = display;
         }
 
+        if (TryGetPropertyCaseInsensitive(root, "frameAnalysisOptions", out var frameOptionsElem))
+        {
+            var options = JsonSerializer.Deserialize<FrameAnalysisOptions>(frameOptionsElem.GetRawText());
+            if (options != null)
+                model.FrameAnalysisOptions = options;
+        }
+
         if (TryGetPropertyCaseInsensitive(root, "activeLoadCaseId", out var activeLoadCaseElem))
             model.ActiveLoadCaseId = activeLoadCaseElem.GetString() ?? string.Empty;
 
@@ -220,7 +266,15 @@ public static class StructureImporterExporter
                     ConstraintZ = GetBoolOrDefault(n, "fixUz"),
                     ConstraintRX = GetBoolOrDefault(n, "fixRx"),
                     ConstraintRY = GetBoolOrDefault(n, "fixRy"),
-                    ConstraintRZ = GetBoolOrDefault(n, "fixRz")
+                    ConstraintRZ = GetBoolOrDefault(n, "fixRz"),
+                    PrescribedDisplacement = new Vector3D(
+                        GetDoubleOrDefault(n, "prescribedUx"),
+                        GetDoubleOrDefault(n, "prescribedUy"),
+                        GetDoubleOrDefault(n, "prescribedUz")),
+                    PrescribedRotation = new Vector3D(
+                        GetDoubleOrDefault(n, "prescribedRx"),
+                        GetDoubleOrDefault(n, "prescribedRy"),
+                        GetDoubleOrDefault(n, "prescribedRz"))
                 };
                 node.ApplyForce(GetDoubleOrDefault(n, "fx"), GetDoubleOrDefault(n, "fy"), GetDoubleOrDefault(n, "fz"));
                 node.ApplyMoment(GetDoubleOrDefault(n, "mx"), GetDoubleOrDefault(n, "my"), GetDoubleOrDefault(n, "mz"));
@@ -282,6 +336,10 @@ public static class StructureImporterExporter
                 int materialId = GetPropertyCaseInsensitive(e, "materialId").GetInt32();
                 int sectionId = GetPropertyCaseInsensitive(e, "sectionId").GetInt32();
                 double rollAngle = GetDoubleOrDefault(e, "rollAngleRadians");
+                double startRigidEndOffset = GetDoubleOrDefault(e, "startRigidEndOffset");
+                double endRigidEndOffset = GetDoubleOrDefault(e, "endRigidEndOffset");
+                var startInsertionPointLocal = ReadVector3D(e, "startInsertionPointLocal");
+                var endInsertionPointLocal = ReadVector3D(e, "endInsertionPointLocal");
                 var releases = ReadReleases(e);
                 model.Elements.Add(type == ElementType.Frame3D
                     ? new FrameElement3D
@@ -292,6 +350,10 @@ public static class StructureImporterExporter
                         MaterialId = materialId,
                         SectionId = sectionId,
                         RollAngleRadians = rollAngle,
+                        StartRigidEndOffset = startRigidEndOffset,
+                        EndRigidEndOffset = endRigidEndOffset,
+                        StartInsertionPointLocal = startInsertionPointLocal,
+                        EndInsertionPointLocal = endInsertionPointLocal,
                         Releases = releases
                     }
                     : new TrussElement
@@ -302,6 +364,10 @@ public static class StructureImporterExporter
                         MaterialId = materialId,
                         SectionId = sectionId,
                         RollAngleRadians = rollAngle,
+                        StartRigidEndOffset = startRigidEndOffset,
+                        EndRigidEndOffset = endRigidEndOffset,
+                        StartInsertionPointLocal = startInsertionPointLocal,
+                        EndInsertionPointLocal = endInsertionPointLocal,
                         Releases = releases
                     });
             }
@@ -396,6 +462,16 @@ public static class StructureImporterExporter
                         Direction = Enum.Parse<LoadDirection>(GetStringOrDefault(load, "direction", "GlobalZ"), ignoreCase: true),
                         StartRelativeDistance = GetDoubleOrDefault(load, "startRelativeDistance", 0.0),
                         EndRelativeDistance = GetDoubleOrDefault(load, "endRelativeDistance", 1.0)
+                    });
+                }
+                else if (kind == "MemberTemperature")
+                {
+                    model.Loads.Add(new MemberTemperatureLoad
+                    {
+                        LoadCaseId = loadCaseId,
+                        ElementId = GetPropertyCaseInsensitive(load, "elementId").GetInt32(),
+                        TemperatureChange = GetDoubleOrDefault(load, "temperatureChange"),
+                        ThermalExpansionCoefficient = GetDoubleOrDefault(load, "thermalExpansionCoefficient")
                     });
                 }
             }
@@ -611,6 +687,17 @@ public static class StructureImporterExporter
             EndMomentZ = GetBoolOrDefault(releases, "endMomentZ")
         };
     }
+
+    private static Vector3D ReadVector3D(JsonElement element, string propertyName)
+    {
+        if (!TryGetPropertyCaseInsensitive(element, propertyName, out var vector) || vector.ValueKind != JsonValueKind.Object)
+            return Vector3D.Zero;
+
+        return new Vector3D(
+            GetDoubleOrDefault(vector, "x"),
+            GetDoubleOrDefault(vector, "y"),
+            GetDoubleOrDefault(vector, "z"));
+    }
     
     /// <summary>
     /// Exports analysis results to CSV format.
@@ -655,7 +742,7 @@ public static class StructureImporterExporter
         using var writer = new StreamWriter(filePath, false, Encoding.UTF8);
         
         writer.WriteLine("╔════════════════════════════════════════════════════════╗");
-        writer.WriteLine("║         3D TRUSS ANALYSIS REPORT                       ║");
+        writer.WriteLine($"║         {ProductIdentity.Name} ANALYSIS REPORT                     ║");
         writer.WriteLine("╚════════════════════════════════════════════════════════╝");
         writer.WriteLine();
         writer.WriteLine($"Project: {projectName}");

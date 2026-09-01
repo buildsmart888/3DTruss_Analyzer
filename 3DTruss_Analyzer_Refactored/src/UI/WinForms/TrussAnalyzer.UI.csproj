@@ -10,6 +10,8 @@
     <NoWarn>$(NoWarn);NU1701</NoWarn>
     <RootNamespace>TrussAnalyzer.UI</RootNamespace>
     <AssemblyName>TrussAnalyzer.UI</AssemblyName>
+    <Product>GOStructAnalysis</Product>
+    <Description>GOStructAnalysis Windows desktop application; legacy assembly identity retained for compatibility.</Description>
   </PropertyGroup>
 
   <ItemGroup>

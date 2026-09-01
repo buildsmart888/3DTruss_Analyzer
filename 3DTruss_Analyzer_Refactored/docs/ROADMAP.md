@@ -2,6 +2,11 @@
 
 This roadmap describes the recommended path from the current 3D Truss Analyzer MVP to a maintainable 3D structural analysis and design program for Thai structural engineering practice.
 
+The detailed product transition, C#/Python responsibility split, `Model3D` contract, target WPF
+workflow, and milestone acceptance gates for the `GOStructAnalysis` product name are maintained in
+[`GOSTRUCTANALYSIS_ROADMAP.md`](GOSTRUCTANALYSIS_ROADMAP.md). This document remains the implementation
+history and capability-phase roadmap for the current codebase.
+
 ## Guiding Principles
 
 - Keep the product core in C#/.NET.
@@ -18,11 +23,13 @@ Goal: make the current MVP easier to maintain before adding large building featu
 
 Status: recommended next phase.
 
+Current progress: started. `ModelValidator`, `DofIndexer`, `BoundaryConditionApplier`, `FrameElementStiffnessProvider`, `GlobalStiffnessAssembler`, `LoadVectorAssembler`, `LinearAnalysisRunner`, `ReactionRecoveryService`, `EquilibriumCheckService`, `ElementForceRecoveryService`, `SolverDiagnosticsService`, `AnalysisResultBuilder`, and `DesignCheckRunner` are now separate analysis/design services while preserving `StructuralSolver.ValidateModel()` and solver result behavior.
+
 Scope:
 
 - Rename product documentation from truss-only wording to structural analysis wording.
 - Keep namespaces stable until a planned migration is scheduled.
-- Split the large `StructuralSolver` responsibilities into smaller services.
+- Split the large `StructuralSolver` responsibilities into smaller services. Started with validation and DOF indexing.
 - Add explicit architecture boundaries:
   - model validation
   - element formulation
@@ -56,6 +63,8 @@ Acceptance criteria:
 
 Goal: make the native frame solver trustworthy for steel frames, roof structures, portal frames, and simple building frames.
 
+Status: substantially implemented. `MechanismDiagnosticsService` adds suspect node/DOF information to singular or unstable solve failures. `ElementForceRecoveryService` recovers load-aware local axial, shear, torsion, and bending stations under member point and uniform distributed loads, including explicit left/right samples at point-load jumps. The frame model now supports prescribed support displacement, rigid-end zones, local insertion points, static-condensed moment releases, uniform axial temperature loads, and an optional Timoshenko formulation. Automated baselines and a manual ETABS/STAAD/OpenSees comparison workflow are documented in `docs/FRAME_BENCHMARKS.md`.
+
 Scope:
 
 - Refine `FrameElement3D` stiffness and force recovery.
@@ -83,6 +92,12 @@ Deliverables:
 - Production-grade linear frame analysis for small to medium models.
 - Force diagrams for axial, shear Y/Z, torsion, moment Y/Z.
 - Clear diagnostic messages for singular matrices and mechanisms.
+
+Current limitations:
+
+- No panel-zone, nonlinear joint, temperature-gradient, staged-temperature, or load-case-specific support-movement behavior.
+- Timoshenko shear area uses gross section area and user-configured correction factors; it is not a section-code-calibrated shear-area model.
+- External program comparisons are a documented manual workflow; no external executable adapter is included.
 
 ## Phase 2 - Building Modeling Workflow
 

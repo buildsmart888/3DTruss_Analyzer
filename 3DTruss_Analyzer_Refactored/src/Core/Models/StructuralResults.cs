@@ -66,12 +66,20 @@ public class ElementStationResult
 {
     public int ElementId { get; init; }
     public double RelativePosition { get; init; }
+    public DiagramStationSide DiagramSide { get; init; } = DiagramStationSide.Continuous;
     public double AxialForce { get; init; }
     public double ShearY { get; init; }
     public double ShearZ { get; init; }
     public double Torsion { get; init; }
     public double MomentY { get; init; }
     public double MomentZ { get; init; }
+}
+
+public enum DiagramStationSide
+{
+    Continuous,
+    Left,
+    Right
 }
 
 public enum DesignCheckStatus

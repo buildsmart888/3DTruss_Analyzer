@@ -25,6 +25,12 @@ public class Node
     public bool ConstraintRY { get; set; }
     public bool ConstraintRZ { get; set; }
 
+    /// <summary>Prescribed translational support displacement in global coordinates (m).</summary>
+    public Vector3D PrescribedDisplacement { get; set; }
+
+    /// <summary>Prescribed support rotation in global coordinates (rad).</summary>
+    public Vector3D PrescribedRotation { get; set; }
+
     /// <summary>Calculated displacement after analysis (units: meters)</summary>
     public Vector3D Displacement { get; set; }
 
@@ -53,6 +59,8 @@ public class Node
         ConstraintRX = false;
         ConstraintRY = false;
         ConstraintRZ = false;
+        PrescribedDisplacement = Vector3D.Zero;
+        PrescribedRotation = Vector3D.Zero;
     }
 
     /// <summary>
@@ -115,6 +123,22 @@ public class Node
     public void SetRotation(double rx, double ry, double rz)
     {
         Rotation = new Vector3D(rx, ry, rz);
+    }
+
+    /// <summary>
+    /// Sets imposed support translation. The corresponding translation DOF must be constrained.
+    /// </summary>
+    public void SetPrescribedDisplacement(double dx, double dy, double dz)
+    {
+        PrescribedDisplacement = new Vector3D(dx, dy, dz);
+    }
+
+    /// <summary>
+    /// Sets imposed support rotation. The corresponding rotational DOF must be constrained.
+    /// </summary>
+    public void SetPrescribedRotation(double rx, double ry, double rz)
+    {
+        PrescribedRotation = new Vector3D(rx, ry, rz);
     }
 
     /// <summary>

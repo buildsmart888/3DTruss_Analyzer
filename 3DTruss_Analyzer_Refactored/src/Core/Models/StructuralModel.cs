@@ -15,6 +15,7 @@ public class StructuralModel
     public List<LoadCombination> LoadCombinations { get; init; } = new();
     public List<LoadItem> Loads { get; init; } = new();
     public DesignSettings DesignSettings { get; set; } = new();
+    public FrameAnalysisOptions FrameAnalysisOptions { get; set; } = new();
     public CoordinateConvention CoordinateSystem { get; set; } = CoordinateConvention.RightHanded_ZUp;
     public ViewerDisplayOptions DisplaySettings { get; set; } = new();
     public string ActiveLoadCaseId { get; set; } = string.Empty;

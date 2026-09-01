@@ -16,6 +16,10 @@ public abstract class StructuralElement
     public ElementType Type { get; protected init; }
     public double RollAngleRadians { get; init; }
     public FrameMemberRelease Releases { get; init; } = new();
+    public double StartRigidEndOffset { get; init; }
+    public double EndRigidEndOffset { get; init; }
+    public Vector3D StartInsertionPointLocal { get; init; } = Vector3D.Zero;
+    public Vector3D EndInsertionPointLocal { get; init; } = Vector3D.Zero;
 
     public double Length(Point3D start, Point3D end) => start.DistanceTo(end);
 }

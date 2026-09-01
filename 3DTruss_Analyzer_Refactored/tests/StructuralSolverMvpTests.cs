@@ -47,6 +47,31 @@ public class StructuralSolverMvpTests
     }
 
     [Fact]
+    public void PrescribedSupportSettlement_ProducesClosedFormAxialReactions()
+    {
+        double length = 2.5;
+        double area = 0.003;
+        double settlement = 0.01;
+        var model = CreateCantileverFrame(length, area);
+        var end = model.Nodes.Single(n => n.Id == 2);
+        end.ConstraintX = true;
+        end.ConstraintY = true;
+        end.ConstraintZ = true;
+        end.ConstraintRX = true;
+        end.ConstraintRY = true;
+        end.ConstraintRZ = true;
+        end.SetPrescribedDisplacement(settlement, 0, 0);
+
+        var result = new StructuralSolver(model).Analyze();
+
+        double expectedAxial = 200e9 * area * settlement / length;
+        Assert.Equal(settlement, result.NodeResults.Single(node => node.NodeId == 2).Displacement.X, precision: 12);
+        Assert.Equal(-expectedAxial, result.NodeResults.Single(node => node.NodeId == 1).ReactionForce.X, precision: 6);
+        Assert.Equal(expectedAxial, result.NodeResults.Single(node => node.NodeId == 2).ReactionForce.X, precision: 6);
+        Assert.True(result.Equilibrium.IsSatisfied);
+    }
+
+    [Fact]
     public void NodalMomentLoad_ProducesSupportMomentReaction()
     {
         var model = CreateCantileverFrame(4);
@@ -384,6 +409,26 @@ public class StructuralSolverMvpTests
     }
 
     [Fact]
+    public void StructuralJsonV2_RoundTrip_PreservesPrescribedSupportDisplacementAndRotation()
+    {
+        var model = CreateCantileverFrame(2);
+        var support = model.Nodes.Single(node => node.Id == 1);
+        support.SetPrescribedDisplacement(0.001, -0.002, 0.003);
+        support.SetPrescribedRotation(0.004, -0.005, 0.006);
+
+        var imported = StructureImporterExporter.ImportStructuralModelFromJson(
+            StructureImporterExporter.ExportStructuralModelToJson(model));
+        var importedSupport = imported.Nodes.Single(node => node.Id == 1);
+
+        Assert.Equal(0.001, importedSupport.PrescribedDisplacement.X, precision: 12);
+        Assert.Equal(-0.002, importedSupport.PrescribedDisplacement.Y, precision: 12);
+        Assert.Equal(0.003, importedSupport.PrescribedDisplacement.Z, precision: 12);
+        Assert.Equal(0.004, importedSupport.PrescribedRotation.X, precision: 12);
+        Assert.Equal(-0.005, importedSupport.PrescribedRotation.Y, precision: 12);
+        Assert.Equal(0.006, importedSupport.PrescribedRotation.Z, precision: 12);
+    }
+
+    [Fact]
     public void StructuralJsonV2_RoundTrip_PreservesReleaseRollAndDesignSettings()
     {
         var model = CreateCantileverFrame(2);
@@ -458,6 +503,21 @@ public class StructuralSolverMvpTests
         Assert.Equal(
             serviceMessages.Select(ToComparableValidationMessage),
             solverMessages.Select(ToComparableValidationMessage));
+    }
+
+    [Fact]
+    public void ValidationReportsPrescribedDisplacementOnUnconstrainedDof()
+    {
+        var model = CreateCantileverFrame(2);
+        model.Nodes.Single(node => node.Id == 2).SetPrescribedDisplacement(0.001, 0, 0);
+
+        var messages = new StructuralSolver(model).ValidateModel();
+
+        Assert.Contains(messages, message =>
+            message.Severity == "Error" &&
+            message.ObjectType == SelectedModelObjectType.Node &&
+            message.ObjectId == 2 &&
+            message.Message.Contains("prescribed UX"));
     }
 
     private static StructuralModel CreateCantileverFrame(double length, double area = 0.003)

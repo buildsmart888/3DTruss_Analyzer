@@ -45,7 +45,25 @@ Current MVP assumptions:
 - Euler-Bernoulli frame behavior.
 - Truss elements are axial-only.
 - Loads are applied as nodal loads or converted to equivalent nodal loads.
-- Frame member result stations are reported at evenly spaced relative positions along each member; the default is 5 stations and models may request a denser station count.
+- Frame member result stations are reported at evenly spaced relative positions along each member; the default is 5 stations and models may request a denser station count. Internal member point loads add coincident left/right stations so discontinuities can be represented without smoothing a shear jump.
+- Member point loads and uniform distributed loads are retained in local coordinates after load assembly for diagram recovery. Exact station recovery covers local axial, shear, and bending diagrams, including partial uniform distributed loads. Point moments produce the appropriate local torsion or bending jump.
+- Self-weight-only member diagrams and unsupported load/result components retain linear interpolation between recovered local end forces. These preliminary diagrams must not be treated as a full member-load recovery engine.
+
+## Prescribed Support Displacement
+
+- `Node.PrescribedDisplacement` is a global translation in metres and `Node.PrescribedRotation` is a global rotation in radians.
+- A non-zero prescribed component is valid only when its matching node DOF is constrained; model validation reports an error otherwise.
+- The dense boundary-condition path applies the prescribed value through the standard load correction `F_f - K_fc u_c` before solving.
+- Prescribed support values are model-wide, so they apply to every analyzed load case and load combination. Load-case-specific settlement, time effects, and soil-structure interaction are outside the current MVP scope.
+
+## Frame Offset, Release, And Thermal Assumptions
+
+- `StartRigidEndOffset` and `EndRigidEndOffset` are non-negative local-x rigid-zone lengths. `StartInsertionPointLocal` and `EndInsertionPointLocal` are local-coordinate connection offsets in metres.
+- Rigid-zone/insertion offsets use a linear node-to-connection kinematic transformation. The flexible length is the distance between offset connection points and must remain positive.
+- Moment releases are statically condensed from the local stiffness and equivalent member load before assembly. Released local moment DOFs recover zero moment.
+- `FrameAnalysisOptions` defaults to Euler-Bernoulli. Timoshenko uses gross section area and configured Y/Z shear correction factors; use it only after confirming the selected factors for the section family.
+- `MemberTemperatureLoad` represents uniform axial temperature change only. Its thermal expansion coefficient is 1/K, and its `TemperatureChange` is a temperature difference in K or degrees C.
+- Temperature gradients, through-depth curvature, staged construction, panel-zone flexibility, nonlinear joints, and soil-structure interaction are unsupported.
 
 Known unavailable behavior:
 
@@ -59,6 +77,14 @@ Known unavailable behavior:
 - Time history.
 - Shell/slab/wall solver behavior.
 
+## Mechanism Diagnostics
+
+For singular or unstable linear-solve failures, `MechanismDiagnosticsService` reports suspect node DOFs from zero-stiffness rows and the first rank-deficient Gaussian-elimination pivot.
+
+- Diagnostics preserve the dense solver's `1e-12` absolute pivot threshold.
+- Messages are troubleshooting guidance only; they do not establish the complete physical mechanism or replace engineering stability review.
+- A successful solve is not proof that all stability, second-order, or serviceability requirements are satisfied.
+
 ## Area Object MVP Assumptions
 
 Phase 8 area objects are preliminary model data:
@@ -69,6 +95,16 @@ Phase 8 area objects are preliminary model data:
 - `DiaphragmId` is metadata only until a diaphragm constraint service is implemented.
 - Area objects do not contribute stiffness, mass, loads, reactions, design checks, or report result contours.
 - Keep conversion to shell elements behind a dedicated service boundary; do not add area/shell conversion logic directly inside UI event handlers or `StructuralSolver`.
+
+## Model3D V1 Contract
+
+- `ProjectDocument` and `Model3D` under `Core/Domain/V1` are specification DTOs, not current solver input.
+- Persistent objects use globally unique GUIDs; labels are editable and references never use labels or list positions.
+- Model3D JSON stores canonical SI values even when `UnitPreferences` request Thai engineering display units.
+- A local-axis reference that is zero, parallel, or numerically near-parallel to member local x is invalid.
+- Frame3D supports six explicit end-release flags; all-six release at one end is invalid. Truss3D does not accept assigned release data.
+- AreaObject3D is storage/validation only and must be reported as unsupported before analysis results are presented.
+- Rigid-link and master-slave dependency cycles are invalid.
 
 ## Section Visualization Assumptions
 

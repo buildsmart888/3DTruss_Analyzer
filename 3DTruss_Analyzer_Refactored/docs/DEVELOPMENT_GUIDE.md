@@ -8,6 +8,10 @@ New work should target the `StructuralModel` path unless the task is specificall
 
 Keep `TrussSolver` stable for old examples/tests. Add new capabilities through the newer structural pipeline.
 
+For future project/domain work, target `Core/Domain/V1/ProjectDocument` and `Model3D` only after reading
+`MODEL3D_V1_SPEC.md`. Do not connect Model3D directly to the solver or replace current JSON persistence;
+use a separately reviewed adapter/migration slice and preserve all unsupported-data diagnostics.
+
 ## Build And Test
 
 Run before handing off any code change:
@@ -30,14 +34,13 @@ dotnet run --project src/UI/WinForms/TrussAnalyzer.UI.csproj
 1. Model validation through `Core/Analysis/Validation/ModelValidator`.
 2. Node and element lookup.
 3. DOF numbering with 6 DOF per node: UX, UY, UZ, RX, RY, RZ.
-4. Global stiffness assembly.
-5. Load vector assembly.
-6. Boundary condition application.
-7. Linear solve.
-8. Reaction recovery from the original stiffness matrix and force vector.
-9. Element force recovery.
-10. Solver diagnostics.
-11. Preliminary design/safety checks.
+4. `LinearAnalysisRunner` performs global stiffness assembly, load vector assembly, boundary condition application, and linear solve.
+5. Reaction recovery from the original stiffness matrix and force vector.
+6. Element force recovery.
+7. Preliminary design/safety checks.
+8. Global translational equilibrium check.
+9. Solver diagnostics.
+10. Analysis result DTO assembly.
 
 ## Refactoring Direction
 
@@ -45,17 +48,23 @@ As the project grows, split solver responsibilities into smaller services:
 
 - `ModelValidator` (implemented under `Core/Analysis/Validation`)
 - `DofIndexer`
-- `ElementStiffnessProvider`
-- `GlobalStiffnessAssembler`
-- `LoadVectorAssembler`
-- `BoundaryConditionApplier`
+- `FrameElementStiffnessProvider` (implemented for local truss/frame stiffness, optional Timoshenko shear deformation, and condensed moment releases)
+- `FrameElementGeometryResolver` (implemented for rigid-end zones, local insertion points, and connection kinematics)
+- `GlobalStiffnessAssembler` (implemented for dense local-to-global stiffness accumulation)
+- `LoadVectorAssembler` (implemented for nodal, member, and self-weight load assembly with equivalent local member-load recovery data)
+- `BoundaryConditionApplier` (implemented for dense-matrix support constraints and prescribed displacement/rotation load correction)
 - `LinearSystemSolver`
-- `ElementForceRecoveryService`
-- `SolverDiagnosticsService`
+- `LinearAnalysisRunner` (implemented for common load-case/load-combination analysis and solve flow)
+- `ReactionRecoveryService` (implemented for node reactions from the original global stiffness matrix, load vector, and solved displacements)
+- `EquilibriumCheckService` (implemented for the current translational force equilibrium and tolerance calculation)
+- `ElementForceRecoveryService` (implemented for local displacement recovery, equivalent load subtraction, end forces, and load-aware axial/shear/torsion/bending station results for member point/UDL loads, with compatibility interpolation for unsupported load types)
+- `SolverDiagnosticsService` (implemented for solver metrics, dense-path warnings, and diagnostic notes)
+- `AnalysisResultBuilder` (implemented for node/element result construction, node-state updates, and final analysis result DTO assembly)
 - `SteelDesignService`
 - `ConcreteDesignService`
+- `DesignCheckRunner` (implemented for material-based design routing plus preliminary RC axial and shear checks)
 
-Do not add more design-code logic directly inside `StructuralSolver`.
+Do not add more design-code logic or design routing directly inside `StructuralSolver`.
 
 ## Engineering Assumptions
 

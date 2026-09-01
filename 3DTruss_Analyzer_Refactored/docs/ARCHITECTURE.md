@@ -9,23 +9,22 @@ The project currently has two analysis paths:
 - `TrussSolver`: legacy compatibility facade for axial-only truss analysis.
 - `StructuralSolver`: newer solver path for `StructuralModel`, truss elements, and 3D frame elements.
 
-The current `StructuralSolver` still performs many responsibilities in one class:
-
-- DOF indexing
-- stiffness assembly
-- load assembly
-- boundary-condition handling
-- linear solving
-- reaction recovery
-- element force recovery
-- diagnostics
-- preliminary RC and material-routing design checks
-
-Model validation has been extracted to `Core/Analysis/Validation/ModelValidator`, with `StructuralSolver.ValidateModel()` kept as the compatibility entrypoint. The remaining solver responsibilities should continue to be split before adding building, steel design, RC design, shell elements, and Thai code modules.
+`StructuralSolver` now coordinates the analysis pipeline. Model validation, DOF indexing, stiffness/load assembly, boundary conditions, reaction recovery, equilibrium checking, element-force recovery, diagnostics, result assembly, and preliminary design routing are separate services.
 
 The first building workflow layer is available as `Core/Models/BuildingModel.cs`. It contains grid lines, stories, beam objects, column objects, supports, and nodal loads, and generates an ordinary `StructuralModel` for analysis/export.
 
 The first Phase 8 area-object layer is available as `Core/Models/AreaObject.cs`. Area objects are stored on `StructuralModel.AreaObjects` and serialized with the model, but they are intentionally not consumed by `StructuralSolver` until a validated shell/diaphragm path exists.
+
+## Model3D V1 Domain Boundary
+
+`Core/Domain/V1` contains the solver-independent `ProjectDocument` and `Model3D` specification. It uses
+GUID references, canonical SI values, structured validation, strict JSON behavior, and presentation
+metadata outside engineering model state. It is intentionally separate from the current integer-ID
+`StructuralModel` solver contract.
+
+Model3D V1 must not be passed directly to `StructuralSolver`. A tested adapter with explicit defaulting,
+unsupported-data reporting, and result parity is the next roadmap slice. Production persistence,
+legacy migration, `.gosa`, atomic save, backup, and recovery remain Milestone C responsibilities.
 
 ## Target Architecture
 
@@ -101,17 +100,38 @@ Suggested services:
 
 - `ModelValidator`
 - `DofIndexer`
-- `ElementStiffnessProvider`
+- `FrameElementStiffnessProvider`
 - `GlobalStiffnessAssembler`
 - `LoadVectorAssembler`
 - `BoundaryConditionApplier`
 - `LinearAnalysisSolver`
+- `LinearAnalysisRunner`
+- `MechanismDiagnosticsService`
+- `ReactionRecoveryService`
+- `EquilibriumCheckService`
 - `ElementForceRecoveryService`
 - `SolverDiagnosticsService`
+- `AnalysisResultBuilder`
 
 Current implemented boundary:
 
 - `Core/Analysis/Validation/ModelValidator` owns structural model validation messages used by the structural solver and UI diagnostics.
+- `Core/Analysis/DofIndexer` owns node-to-DOF numbering, element DOF maps, and constrained DOF enumeration used by `StructuralSolver`.
+- `Core/Analysis/BoundaryConditionApplier` owns the dense-matrix constraint transformation. For prescribed support values it first transfers `K_fc * u_c` to the free-DOF load vector, then zeroes constrained rows and columns, sets the diagonal to one, and writes the prescribed displacement/rotation value to the constrained load entry.
+- `Core/Analysis/FrameElementStiffnessProvider` owns local truss/frame stiffness, optional Timoshenko shear deformation, and static condensation for moment releases.
+- `Core/Analysis/FrameElementGeometryResolver` owns flexible member endpoint geometry and the node-to-connection kinematic transformation for rigid-end zones and local insertion points.
+- `Core/Analysis/GlobalStiffnessAssembler` transforms local stiffness using `T^T Klocal T` and accumulates it into the global dense matrix through the element DOF map.
+- `Core/Analysis/LoadVectorAssembler` owns nodal, member point, member distributed, member temperature, and self-weight load assembly. `LoadAssemblyResult` retains the equivalent local member loads required for force recovery plus local member-load metadata for diagram recovery.
+- `FrameElementStiffnessProvider` also condenses equivalent local member loads when moment releases are present, so released end moments recover as zero.
+- `Core/Analysis/FrameCoordinateSystem` owns local-axis and 12-DOF transformation construction shared by stiffness and load assembly; `StructuralSolver` retains static compatibility wrappers for existing viewer callers.
+- `Core/Analysis/ReactionRecoveryService` owns node reaction recovery from the original stiffness matrix, original load vector, and solved displacement vector using `K_original u - F_original`.
+- `Core/Analysis/EquilibriumCheckService` owns the current global translational equilibrium summary and preserves the existing force-only tolerance rule.
+- `Core/Analysis/ElementForceRecoveryService` owns local displacement recovery, equivalent member-load subtraction, end-force DTO construction, and load-aware station recovery. It produces exact local axial/shear/bending station shapes for tracked member point and uniform distributed loads, plus torsion/bending jumps from point moments; internal point loads create explicit left/right station samples. Unsupported load types retain the compatibility interpolation from local end forces.
+- `Core/Analysis/SolverDiagnosticsService` owns `SolverDiagnostics` metrics, dense-solver warning selection, and solver-path notes.
+- `Core/Analysis/AnalysisResultBuilder` owns structural node/element result construction, compatibility updates to model-node result state, and final `StructuralAnalysisResult` DTO assembly.
+- `Core/Analysis/LinearAnalysisRunner` owns common load-case/load-combination assembly, dense constraint application, linear solver invocation, and the `LinearAnalysisRunResult` snapshot used by result recovery.
+- `Node.PrescribedDisplacement` and `Node.PrescribedRotation` are global-coordinate support boundary values in metres and radians. `DofIndexer` maps them only for their matching constrained DOFs.
+- `Core/Analysis/MechanismDiagnosticsService` interprets singular or unstable solve failures using zero-stiffness rows and the first rank-deficient pivot. Its messages identify suspect node DOFs but do not prove the complete physical mechanism.
 - `Core/Utilities/ILinearSystemSolver` is the explicit solver boundary used by `StructuralSolver`.
 - `DenseLinearSystemSolver` remains the default validated solver path.
 - `SparseMatrix` and `SparsePrototypeLinearSystemSolver` provide a Phase 7 sparse-data/adapter prototype. The prototype is diagnosable through solver name metadata but still falls back to the dense solver for numerical solving.
@@ -124,6 +144,7 @@ Suggested services:
 
 - `SteelDesignService`
 - `ConcreteDesignService`
+- `DesignCheckRunner`
 - `ThaiLoadCombinationService`
 - `ThaiWindLoadService`
 - `ThaiSeismicLoadService`
@@ -136,6 +157,7 @@ Current implemented boundary:
 
 - `Core/Design/Steel/SteelDesignService` owns preliminary steel, aluminum, and custom material stress checks and consumes `StructuralModel` plus `ElementForceResult` DTOs.
 - `Core/Design/Concrete/ConcreteDesignService` owns preliminary RC rectangular member flexure checks and consumes `StructuralModel` plus `ElementForceResult` DTOs.
+- `Core/Design/DesignCheckRunner` owns material-based design-check routing and the existing preliminary RC axial and shear checks; it preserves `DesignCheckResult` ordering and delegates steel/flexure equations to their dedicated services.
 - `Core/Design/Foundation/GoPileCalculator` owns preliminary eccentric pile foundation calculations for F1-F5 pile layouts.
 - GO Pile consumes explicit foundation input DTOs and returns result DTOs for UI/reporting; it does not depend on `StructuralSolver`.
 - `Core/Design/ThaiCode/ThaiLoadTemplateService` owns preliminary Thai load case and load combination templates. It creates model DTOs only and does not generate wind or seismic forces.

@@ -33,6 +33,15 @@ public class ModelValidator
         AddDuplicateChecks(messages, _model.Materials.Select(m => m.Id), "material");
         AddDuplicateChecks(messages, _model.Sections.Select(s => s.Id), "section");
 
+        if (_model.FrameAnalysisOptions.UsesTimoshenkoShearDeformation &&
+            (_model.FrameAnalysisOptions.ShearCorrectionFactorY <= 0 || _model.FrameAnalysisOptions.ShearCorrectionFactorZ <= 0))
+        {
+            messages.Add(Error("Timoshenko shear correction factors must be positive."));
+        }
+
+        foreach (var node in _model.Nodes)
+            AddPrescribedDisplacementValidation(messages, node);
+
         foreach (var element in _model.Elements)
         {
             if (!_nodes.ContainsKey(element.StartNodeId))
@@ -57,6 +66,8 @@ public class ModelValidator
             {
                 messages.Add(Error($"Frame element {element.Id} requires positive A, Iy, Iz, and J.", SelectedModelObjectType.Element, element.Id));
             }
+
+            AddFrameGeometryValidation(messages, element);
 
             if (element.Type == ElementType.Truss)
             {
@@ -107,6 +118,14 @@ public class ModelValidator
             });
         }
 
+        foreach (var temperatureLoad in _model.Loads.OfType<MemberTemperatureLoad>())
+        {
+            if (!_model.Elements.Any(element => element.Id == temperatureLoad.ElementId))
+                messages.Add(Error($"Temperature load references missing element {temperatureLoad.ElementId}."));
+            if (temperatureLoad.ThermalExpansionCoefficient <= 0)
+                messages.Add(Error($"Temperature load on element {temperatureLoad.ElementId} requires a positive thermal expansion coefficient."));
+        }
+
         int dof = _model.Nodes.Count * 6;
         if (dof > DenseSolverWarningDof)
             messages.Add(new ModelValidationMessage { Severity = "Warning", Message = $"Model has {dof} DOF. Dense solver may be slow for large models." });
@@ -136,6 +155,51 @@ public class ModelValidator
     {
         foreach (var id in ids.GroupBy(id => id).Where(g => g.Count() > 1).Select(g => g.Key))
             messages.Add(Error($"Duplicate {label} id {id}."));
+    }
+
+    private static void AddPrescribedDisplacementValidation(List<ModelValidationMessage> messages, Node node)
+    {
+        const double tolerance = 1e-12;
+        if (!node.ConstraintX && Math.Abs(node.PrescribedDisplacement.X) > tolerance)
+            messages.Add(Error($"Node {node.Id} has a prescribed UX value but UX is not constrained.", SelectedModelObjectType.Node, node.Id));
+        if (!node.ConstraintY && Math.Abs(node.PrescribedDisplacement.Y) > tolerance)
+            messages.Add(Error($"Node {node.Id} has a prescribed UY value but UY is not constrained.", SelectedModelObjectType.Node, node.Id));
+        if (!node.ConstraintZ && Math.Abs(node.PrescribedDisplacement.Z) > tolerance)
+            messages.Add(Error($"Node {node.Id} has a prescribed UZ value but UZ is not constrained.", SelectedModelObjectType.Node, node.Id));
+        if (!node.ConstraintRX && Math.Abs(node.PrescribedRotation.X) > tolerance)
+            messages.Add(Error($"Node {node.Id} has a prescribed RX value but RX is not constrained.", SelectedModelObjectType.Node, node.Id));
+        if (!node.ConstraintRY && Math.Abs(node.PrescribedRotation.Y) > tolerance)
+            messages.Add(Error($"Node {node.Id} has a prescribed RY value but RY is not constrained.", SelectedModelObjectType.Node, node.Id));
+        if (!node.ConstraintRZ && Math.Abs(node.PrescribedRotation.Z) > tolerance)
+            messages.Add(Error($"Node {node.Id} has a prescribed RZ value but RZ is not constrained.", SelectedModelObjectType.Node, node.Id));
+    }
+
+    private void AddFrameGeometryValidation(List<ModelValidationMessage> messages, StructuralElement element)
+    {
+        bool hasOffset = element.StartRigidEndOffset != 0 || element.EndRigidEndOffset != 0 ||
+            element.StartInsertionPointLocal.Magnitude > 1e-12 || element.EndInsertionPointLocal.Magnitude > 1e-12;
+        if (element.Type != ElementType.Frame3D)
+        {
+            if (hasOffset)
+                messages.Add(Error($"Truss element {element.Id} does not support rigid-end or insertion offsets.", SelectedModelObjectType.Element, element.Id));
+            return;
+        }
+
+        if (element.StartRigidEndOffset < 0 || element.EndRigidEndOffset < 0)
+            messages.Add(Error($"Frame element {element.Id} rigid-end offsets must be non-negative.", SelectedModelObjectType.Element, element.Id));
+
+        if (_nodes.TryGetValue(element.StartNodeId, out var start) &&
+            _nodes.TryGetValue(element.EndNodeId, out var end))
+        {
+            try
+            {
+                FrameElementGeometryResolver.Resolve(element, start, end);
+            }
+            catch (InvalidOperationException exception)
+            {
+                messages.Add(Error(exception.Message, SelectedModelObjectType.Element, element.Id));
+            }
+        }
     }
 
     private static LocalAxes GetLocalAxes(Point3D start, Point3D end, double rollAngleRadians = 0)

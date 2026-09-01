@@ -10,7 +10,7 @@ using TrussAnalyzer.Core.Models;
 using TrussAnalyzer.UI.WinForms.Controls;
 
 /// <summary>
-/// Main form for 3D Truss Analyzer application.
+/// Main form for the GOStructAnalysis application.
 /// Provides UI for creating, analyzing, and viewing truss structures.
 /// </summary>
 public partial class MainForm : Form
@@ -46,7 +46,7 @@ public partial class MainForm : Form
     
     private void InitializeComponent()
     {
-        this.Text = "3D Truss Analyzer - Engineering Edition";
+        this.Text = $"{ProductIdentity.Name} - Engineering Preview";
         this.Size = new System.Drawing.Size(1500, 950);
         this.StartPosition = FormStartPosition.CenterScreen;
         
@@ -1086,7 +1086,7 @@ public partial class MainForm : Form
         using var dlg = new OpenFileDialog
         {
             Filter = "JSON Files|*.json",
-            Title = "Open Truss Model"
+            Title = "Open Structural Model"
         };
 
         if (dlg.ShowDialog() == DialogResult.OK)
@@ -1286,7 +1286,7 @@ public partial class MainForm : Form
         using var dlg = new SaveFileDialog
         {
             Filter = "JSON Files|*.json",
-            Title = "Save Truss Model",
+            Title = "Save Structural Model",
             FileName = "truss-model.json"
         };
 
@@ -1338,7 +1338,7 @@ public partial class MainForm : Form
     private static void ExportStructuralResult(string filePath, StructuralAnalysisResult result, StructuralModel? model)
     {
         using var writer = new StreamWriter(filePath);
-        writer.WriteLine("3D Structural Analyzer MVP Report");
+        writer.WriteLine($"{ProductIdentity.Name} Analysis Report");
         writer.WriteLine($"Load case: {result.LoadCaseName}");
         writer.WriteLine($"Equilibrium: {result.Equilibrium.IsSatisfied}");
         writer.WriteLine($"Max displacement (m): {result.MaxDisplacement:E4}");
@@ -1404,7 +1404,7 @@ public partial class MainForm : Form
     private void ExportToTextFile(string filePath)
     {
         using var writer = new StreamWriter(filePath);
-        writer.WriteLine("=== 3D Truss Analysis Report ===");
+        writer.WriteLine($"=== {ProductIdentity.Name} Analysis Report ===");
         writer.WriteLine($"Generated: {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
         writer.WriteLine();
         
@@ -1437,11 +1437,13 @@ public partial class MainForm : Form
     private void ShowAbout()
     {
         MessageBox.Show(
-            "3D Truss Analyzer v1.0\n\n" +
-            "Engineering-grade structural analysis software\n" +
+            $"{ProductIdentity.Name}\n\n" +
+            "3D structural analysis and design platform\n" +
             "Built on Finite Element Method (FEM)\n\n" +
+            "Product status: Engineering Preview\n" +
+            "Analysis and design qualification is incomplete.\n\n" +
             "Features:\n" +
-            "• 3D truss analysis\n" +
+            "• Linear 3D frame and truss analysis\n" +
             "• Self-weight calculation\n" +
             "• Equilibrium verification\n" +
             "• Export reports\n\n" +

@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gostructanalysis.local/schema/model3d-v1.schema.json",
+  "title": "GOStructAnalysis ProjectDocument Model3D V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "projectInfo", "unitPreferences", "model", "loadDefinitions", "analysisDefinitions", "presentationSettings", "auditMetadata"],
+  "properties": {
+    "schemaVersion": { "const": "1.0" },
+    "projectInfo": { "$ref": "#/$defs/projectInfo" },
+    "unitPreferences": { "$ref": "#/$defs/unitPreferences" },
+    "model": { "$ref": "#/$defs/model" },
+    "loadDefinitions": { "$ref": "#/$defs/loadDefinitions" },
+    "analysisDefinitions": { "$ref": "#/$defs/analysisDefinitions" },
+    "presentationSettings": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "theme": { "type": "string" }, "activeView": { "type": "string" } }
+    },
+    "auditMetadata": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "documentId": { "$ref": "#/$defs/guid" },
+        "createdUtc": { "type": "string", "format": "date-time" },
+        "modifiedUtc": { "type": "string", "format": "date-time" },
+        "createdByVersion": { "type": "string" }
+      }
+    }
+  },
+  "$defs": {
+    "guid": { "type": "string", "format": "uuid", "not": { "const": "00000000-0000-0000-0000-000000000000" } },
+    "guidOrNull": { "oneOf": [{ "$ref": "#/$defs/guid" }, { "type": "null" }] },
+    "guidArray": { "type": "array", "items": { "$ref": "#/$defs/guid" }, "uniqueItems": true },
+    "finite": { "type": "number" },
+    "nonNegative": { "type": "number", "minimum": 0 },
+    "positive": { "type": "number", "exclusiveMinimum": 0 },
+    "point": {
+      "type": "object", "additionalProperties": false,
+      "required": ["x", "y", "z"],
+      "properties": { "x": { "$ref": "#/$defs/finite" }, "y": { "$ref": "#/$defs/finite" }, "z": { "$ref": "#/$defs/finite" } }
+    },
+    "dofValues": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "ux": { "$ref": "#/$defs/finite" }, "uy": { "$ref": "#/$defs/finite" }, "uz": { "$ref": "#/$defs/finite" },
+        "rx": { "$ref": "#/$defs/finite" }, "ry": { "$ref": "#/$defs/finite" }, "rz": { "$ref": "#/$defs/finite" }
+      }
+    },
+    "dofRestraints": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "ux": { "type": "boolean" }, "uy": { "type": "boolean" }, "uz": { "type": "boolean" },
+        "rx": { "type": "boolean" }, "ry": { "type": "boolean" }, "rz": { "type": "boolean" }
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "sourceSystem": { "type": "string" }, "sourceVersion": { "type": "string" },
+        "sourceObjectId": { "type": "string" }, "revision": { "type": "string" }, "notes": { "type": "string" }
+      }
+    },
+    "projectInfo": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string" }, "projectNumber": { "type": "string" },
+        "engineer": { "type": "string" }, "reviewer": { "type": "string" }
+      }
+    },
+    "unitPreferences": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "length": { "enum": ["meter", "centimeter", "millimeter"] },
+        "force": { "enum": ["newton", "kilonewton", "kilogramForce", "tonneForce"] },
+        "stress": { "enum": ["pascal", "megapascal"] }
+      }
+    },
+    "model": {
+      "type": "object", "additionalProperties": false,
+      "required": ["nodes", "lineObjects", "areaObjects", "materials", "sections", "supports", "springs", "prescribedMovements", "rigidLinks", "constraints", "levels", "grids", "groups"],
+      "properties": {
+        "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+        "lineObjects": { "type": "array", "items": { "$ref": "#/$defs/line" } },
+        "areaObjects": { "type": "array", "items": { "$ref": "#/$defs/area" } },
+        "materials": { "type": "array", "items": { "$ref": "#/$defs/material" } },
+        "sections": { "type": "array", "items": { "$ref": "#/$defs/section" } },
+        "supports": { "type": "array", "items": { "$ref": "#/$defs/support" } },
+        "springs": { "type": "array", "items": { "$ref": "#/$defs/spring" } },
+        "prescribedMovements": { "type": "array", "items": { "$ref": "#/$defs/movement" } },
+        "rigidLinks": { "type": "array", "items": { "$ref": "#/$defs/rigidLink" } },
+        "constraints": { "type": "array", "items": { "$ref": "#/$defs/constraint" } },
+        "levels": { "type": "array", "items": { "$ref": "#/$defs/level" } },
+        "grids": { "type": "array", "items": { "$ref": "#/$defs/grid" } },
+        "groups": { "type": "array", "items": { "$ref": "#/$defs/group" } }
+      }
+    },
+    "node": {
+      "type": "object", "additionalProperties": false, "required": ["id", "label", "position"],
+      "properties": {
+        "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" }, "position": { "$ref": "#/$defs/point" },
+        "supportId": { "$ref": "#/$defs/guidOrNull" }, "springIds": { "$ref": "#/$defs/guidArray" },
+        "prescribedMovementIds": { "$ref": "#/$defs/guidArray" }, "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "localAxis": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "referenceVector": { "$ref": "#/$defs/point" }, "rollRadians": { "$ref": "#/$defs/finite" } }
+    },
+    "release": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "released": { "$ref": "#/$defs/dofRestraints" }, "partialFixity": { "oneOf": [{ "$ref": "#/$defs/dofValues" }, { "type": "null" }] } }
+    },
+    "line": {
+      "type": "object", "additionalProperties": false,
+      "required": ["objectType", "id", "label", "startNodeId", "endNodeId", "materialId", "sectionId"],
+      "properties": {
+        "objectType": { "enum": ["frame3D", "truss3D"] }, "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" },
+        "startNodeId": { "$ref": "#/$defs/guid" }, "endNodeId": { "$ref": "#/$defs/guid" },
+        "materialId": { "$ref": "#/$defs/guid" }, "sectionId": { "$ref": "#/$defs/guid" },
+        "localAxis": { "$ref": "#/$defs/localAxis" },
+        "startInsertionOffsetLocal": { "$ref": "#/$defs/point" }, "endInsertionOffsetLocal": { "$ref": "#/$defs/point" },
+        "startRigidOffset": { "$ref": "#/$defs/nonNegative" }, "endRigidOffset": { "$ref": "#/$defs/nonNegative" },
+        "startRelease": { "$ref": "#/$defs/release" }, "endRelease": { "$ref": "#/$defs/release" }, "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "material": {
+      "type": "object", "additionalProperties": false, "required": ["id", "label"],
+      "properties": {
+        "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" },
+        "kind": { "enum": ["steel", "concrete", "aluminum", "timber", "custom"] },
+        "youngsModulus": { "$ref": "#/$defs/positive" }, "shearModulus": { "$ref": "#/$defs/positive" },
+        "poissonsRatio": { "type": "number", "exclusiveMinimum": -1, "exclusiveMaximum": 0.5 },
+        "density": { "$ref": "#/$defs/nonNegative" }, "thermalExpansionCoefficient": { "$ref": "#/$defs/finite" },
+        "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "section": {
+      "type": "object", "additionalProperties": false, "required": ["id", "label"],
+      "properties": {
+        "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" },
+        "shape": { "enum": ["generic", "rectangle", "circle", "pipe", "iShape", "channel", "angle", "box", "custom"] },
+        "area": { "$ref": "#/$defs/positive" }, "iy": { "$ref": "#/$defs/positive" }, "iz": { "$ref": "#/$defs/positive" },
+        "torsionalConstant": { "$ref": "#/$defs/positive" }, "shearAreaY": { "$ref": "#/$defs/nonNegative" }, "shearAreaZ": { "$ref": "#/$defs/nonNegative" },
+        "displayDimensions": { "type": "object", "additionalProperties": { "$ref": "#/$defs/positive" } }, "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "support": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" }, "restrained": { "$ref": "#/$defs/dofRestraints" } }
+    },
+    "spring": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" }, "stiffness": { "$ref": "#/$defs/dofValues" } }
+    },
+    "movement": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" }, "loadPatternId": { "$ref": "#/$defs/guid" }, "movement": { "$ref": "#/$defs/dofValues" } }
+    },
+    "area": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" }, "boundaryNodeIds": { "$ref": "#/$defs/guidArray" },
+        "materialId": { "$ref": "#/$defs/guidOrNull" }, "sectionId": { "$ref": "#/$defs/guidOrNull" },
+        "analysisBehavior": { "const": "storageOnly" }, "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "rigidLink": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" }, "masterNodeId": { "$ref": "#/$defs/guid" }, "slaveNodeId": { "$ref": "#/$defs/guid" }, "coupledDofs": { "$ref": "#/$defs/dofRestraints" } }
+    },
+    "constraint": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" }, "masterNodeId": { "$ref": "#/$defs/guid" }, "slaveNodeIds": { "$ref": "#/$defs/guidArray" }, "coupledDofs": { "$ref": "#/$defs/dofRestraints" } }
+    },
+    "level": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" }, "elevation": { "$ref": "#/$defs/finite" } }
+    },
+    "grid": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" }, "axis": { "enum": ["x", "y"] }, "coordinate": { "$ref": "#/$defs/finite" } }
+    },
+    "group": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" }, "objectIds": { "$ref": "#/$defs/guidArray" } }
+    },
+    "loadDefinitions": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "loadPatterns": { "type": "array", "items": { "$ref": "#/$defs/loadPattern" } },
+        "assignments": { "type": "array", "items": { "$ref": "#/$defs/loadAssignment" } },
+        "massSource": { "$ref": "#/$defs/massSource" },
+        "loadCombinations": { "type": "array", "items": { "$ref": "#/$defs/loadCombination" } }
+      }
+    },
+    "loadPattern": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" },
+        "kind": { "enum": ["dead", "superimposedDead", "live", "roofLive", "wind", "seismic", "temperature", "settlement", "other"] },
+        "selfWeightMultiplier": { "$ref": "#/$defs/finite" }, "source": { "$ref": "#/$defs/source" }
+      }
+    },
+    "loadAssignment": {
+      "type": "object", "additionalProperties": false,
+      "required": ["assignmentType", "id", "label", "loadPatternId"],
+      "properties": {
+        "assignmentType": { "enum": ["nodal", "line"] }, "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" },
+        "loadPatternId": { "$ref": "#/$defs/guid" }, "source": { "$ref": "#/$defs/source" },
+        "nodeId": { "$ref": "#/$defs/guid" }, "force": { "$ref": "#/$defs/point" }, "moment": { "$ref": "#/$defs/point" },
+        "lineObjectId": { "$ref": "#/$defs/guid" }, "basis": { "enum": ["global", "local"] },
+        "forcePerLength": { "$ref": "#/$defs/point" }, "startRelativePosition": { "type": "number", "minimum": 0, "maximum": 1 },
+        "endRelativePosition": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "guidFactorMap": { "type": "object", "propertyNames": { "format": "uuid" }, "additionalProperties": { "$ref": "#/$defs/finite" } },
+    "massSource": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "includeElementMass": { "type": "boolean" }, "loadPatternFactors": { "$ref": "#/$defs/guidFactorMap" } }
+    },
+    "loadCombination": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" }, "loadPatternFactors": { "$ref": "#/$defs/guidFactorMap" } }
+    },
+    "analysisDefinitions": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "cases": { "type": "array", "items": { "$ref": "#/$defs/analysisCase" } },
+        "solverOptions": { "$ref": "#/$defs/solverOptions" },
+        "resultSelections": { "type": "array", "items": { "$ref": "#/$defs/resultSelection" } }
+      }
+    },
+    "analysisCase": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" }, "loadPatternId": { "$ref": "#/$defs/guid" } }
+    },
+    "solverOptions": {
+      "type": "object", "additionalProperties": false,
+      "properties": { "solver": { "type": "string" }, "numericalTolerance": { "$ref": "#/$defs/positive" } }
+    },
+    "resultSelection": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "id": { "$ref": "#/$defs/guid" }, "label": { "type": "string" },
+        "kind": { "enum": ["loadPattern", "loadCombination", "envelope"] }, "sourceIds": { "$ref": "#/$defs/guidArray" }
+      }
+    }
+  }
+}

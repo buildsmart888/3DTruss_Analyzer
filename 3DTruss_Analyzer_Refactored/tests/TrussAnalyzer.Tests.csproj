@@ -26,4 +26,10 @@
     <ProjectReference Include="..\src\Core\TrussAnalyzer.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="..\examples\model3d\v1\*.json" Link="examples\model3d\v1\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\examples\test_models\*.json" Link="examples\test_models\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\docs\schema\model3d-v1.schema.json" Link="schema\model3d-v1.schema.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

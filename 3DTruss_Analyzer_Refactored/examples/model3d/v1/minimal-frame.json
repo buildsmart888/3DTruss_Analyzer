@@ -1,0 +1,125 @@
+{
+  "schemaVersion": "1.0",
+  "projectInfo": {
+    "name": "Model3D V1 Minimal Frame",
+    "projectNumber": "EX-V1-001",
+    "engineer": "",
+    "reviewer": ""
+  },
+  "unitPreferences": {
+    "length": "millimeter",
+    "force": "kilonewton",
+    "stress": "megapascal"
+  },
+  "model": {
+    "nodes": [
+      {
+        "id": "10000000-0000-0000-0000-000000000001",
+        "label": "N1",
+        "position": { "x": 0, "y": 0, "z": 0 },
+        "supportId": "40000000-0000-0000-0000-000000000001",
+        "springIds": [],
+        "prescribedMovementIds": [],
+        "source": { "sourceSystem": "", "sourceVersion": "", "sourceObjectId": "", "revision": "", "notes": "" }
+      },
+      {
+        "id": "10000000-0000-0000-0000-000000000002",
+        "label": "N2",
+        "position": { "x": 5, "y": 0, "z": 0 },
+        "supportId": null,
+        "springIds": ["50000000-0000-0000-0000-000000000001"],
+        "prescribedMovementIds": [],
+        "source": { "sourceSystem": "", "sourceVersion": "", "sourceObjectId": "", "revision": "", "notes": "" }
+      }
+    ],
+    "lineObjects": [
+      {
+        "objectType": "frame3D",
+        "id": "70000000-0000-0000-0000-000000000001",
+        "label": "B1",
+        "startNodeId": "10000000-0000-0000-0000-000000000001",
+        "endNodeId": "10000000-0000-0000-0000-000000000002",
+        "materialId": "20000000-0000-0000-0000-000000000001",
+        "sectionId": "30000000-0000-0000-0000-000000000001",
+        "localAxis": { "referenceVector": { "x": 0, "y": 0, "z": 1 }, "rollRadians": 0 },
+        "startInsertionOffsetLocal": { "x": 0, "y": 0, "z": 0 },
+        "endInsertionOffsetLocal": { "x": 0, "y": 0, "z": 0 },
+        "startRigidOffset": 0,
+        "endRigidOffset": 0,
+        "startRelease": { "released": { "ux": false, "uy": false, "uz": false, "rx": false, "ry": false, "rz": false }, "partialFixity": null },
+        "endRelease": { "released": { "ux": false, "uy": false, "uz": false, "rx": false, "ry": false, "rz": true }, "partialFixity": null },
+        "source": { "sourceSystem": "", "sourceVersion": "", "sourceObjectId": "", "revision": "", "notes": "" }
+      }
+    ],
+    "areaObjects": [],
+    "materials": [
+      {
+        "id": "20000000-0000-0000-0000-000000000001", "label": "Structural steel", "kind": "steel",
+        "youngsModulus": 200000000000, "shearModulus": 76923076923, "poissonsRatio": 0.3,
+        "density": 7850, "thermalExpansionCoefficient": 0.000012,
+        "source": { "sourceSystem": "Example", "sourceVersion": "1", "sourceObjectId": "", "revision": "", "notes": "Preliminary material input" }
+      }
+    ],
+    "sections": [
+      {
+        "id": "30000000-0000-0000-0000-000000000001", "label": "Generic frame", "shape": "generic",
+        "area": 0.01, "iy": 0.00008, "iz": 0.00005, "torsionalConstant": 0.00001,
+        "shearAreaY": 0.008, "shearAreaZ": 0.008, "displayDimensions": { "depth": 0.3, "width": 0.2 },
+        "source": { "sourceSystem": "Example", "sourceVersion": "1", "sourceObjectId": "", "revision": "", "notes": "Analysis properties are explicit" }
+      }
+    ],
+    "supports": [
+      {
+        "id": "40000000-0000-0000-0000-000000000001", "label": "Fixed",
+        "restrained": { "ux": true, "uy": true, "uz": true, "rx": true, "ry": true, "rz": true }
+      }
+    ],
+    "springs": [
+      {
+        "id": "50000000-0000-0000-0000-000000000001", "label": "KX",
+        "stiffness": { "ux": 2000000, "uy": 0, "uz": 0, "rx": 0, "ry": 0, "rz": 0 }
+      }
+    ],
+    "prescribedMovements": [],
+    "rigidLinks": [],
+    "constraints": [],
+    "levels": [],
+    "grids": [],
+    "groups": []
+  },
+  "loadDefinitions": {
+    "loadPatterns": [
+      {
+        "id": "60000000-0000-0000-0000-000000000001", "label": "DL", "kind": "dead", "selfWeightMultiplier": 1,
+        "source": { "sourceSystem": "", "sourceVersion": "", "sourceObjectId": "", "revision": "", "notes": "" }
+      }
+    ],
+    "assignments": [
+      {
+        "assignmentType": "nodal", "id": "a0000000-0000-0000-0000-000000000001", "label": "Tip load",
+        "loadPatternId": "60000000-0000-0000-0000-000000000001",
+        "source": { "sourceSystem": "Example", "sourceVersion": "1", "sourceObjectId": "", "revision": "", "notes": "" },
+        "nodeId": "10000000-0000-0000-0000-000000000002",
+        "force": { "x": 0, "y": 0, "z": -10000 }, "moment": { "x": 0, "y": 0, "z": 0 }
+      }
+    ],
+    "massSource": { "includeElementMass": true, "loadPatternFactors": { "60000000-0000-0000-0000-000000000001": 1 } },
+    "loadCombinations": []
+  },
+  "analysisDefinitions": {
+    "cases": [
+      { "id": "b0000000-0000-0000-0000-000000000001", "label": "DL linear", "loadPatternId": "60000000-0000-0000-0000-000000000001" }
+    ],
+    "solverOptions": { "solver": "NativeDenseLinear", "numericalTolerance": 1e-10 },
+    "resultSelections": [
+      { "id": "c0000000-0000-0000-0000-000000000001", "label": "DL results", "kind": "loadPattern", "sourceIds": ["60000000-0000-0000-0000-000000000001"] }
+    ]
+  },
+  "presentationSettings": { "theme": "System", "activeView": "Isometric" },
+  "auditMetadata": {
+    "documentId": "d0000000-0000-0000-0000-000000000001",
+    "createdUtc": "2026-09-01T00:00:00+00:00",
+    "modifiedUtc": "2026-09-01T00:00:00+00:00",
+    "createdByVersion": "Milestone-B"
+  }
+}

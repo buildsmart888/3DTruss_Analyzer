@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <RootNamespace>TrussAnalyzer.Core</RootNamespace>
     <AssemblyName>TrussAnalyzer.Core</AssemblyName>
+    <Product>GOStructAnalysis</Product>
+    <Description>GOStructAnalysis core; legacy assembly identity retained for compatibility.</Description>
   </PropertyGroup>
 
   <ItemGroup>

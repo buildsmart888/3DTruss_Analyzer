@@ -1,4 +1,4 @@
-# 3D Structural Analyzer
+# GOStructAnalysis
 
 > C#/.NET structural analysis and design platform evolving from the original 3D Truss Analyzer into a practical 3D building analysis tool for Thai structural engineers.
 
@@ -14,6 +14,8 @@ Core calculations use SI base units: meters, Newtons, Pascals, kilograms, and kg
 - `dotnet test TrussAnalyzer.sln` currently passes.
 - The original `TrussSolver` API is kept as a compatibility facade.
 - The newer `StructuralModel` + `StructuralSolver` pipeline supports 6-DOF frame analysis.
+- The solver-independent `ProjectDocument` and `Model3D` V1 contract is implemented for cross-discipline review; it does not replace current persistence or solve models yet.
+- Public product identity is `GOStructAnalysis`; legacy solution, assembly, namespace, API, and JSON names remain compatible until a tested migration milestone.
 
 Current MVP capabilities:
 
@@ -24,6 +26,8 @@ Current MVP capabilities:
 - Preliminary Thai load case and load combination templates for DL, SDL, LL, RL, directional wind, and directional seismic placeholders.
 - Schema v2 JSON import/export while still importing legacy truss JSON.
 - Frame member moment releases, local roll angle, local-axis helpers, and member load recovery.
+- Prescribed support translation/rotation for settlement and imposed-displacement analysis.
+- Rigid-end zones, local insertion points, optional Timoshenko shear deformation, and uniform axial member temperature loads.
 - Configurable frame force-result station count for denser axial/shear/torsion/moment diagram DTOs.
 - Optional 3D real-section visualization for rectangular/RC, circular, pipe, I/H, C/channel, and box section placeholders.
 - Preliminary steel/aluminum/custom stress checks and simplified RC axial/flexure/shear checks.
@@ -77,6 +81,10 @@ PyNite is not recommended as the core engine for this C# product. OpenSees may b
 - [Development Guide](docs/DEVELOPMENT_GUIDE.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Detailed Roadmap](docs/ROADMAP.md)
+- [GOStructAnalysis Product And Model3D Roadmap](docs/GOSTRUCTANALYSIS_ROADMAP.md)
+- [Product Governance, Glossary, And Ownership](docs/PRODUCT_GOVERNANCE.md)
+- [Model3D V1 Specification](docs/MODEL3D_V1_SPEC.md)
+- [Model3D V1 JSON Schema](docs/schema/model3d-v1.schema.json)
 - [Engineering Standards](docs/ENGINEERING_STANDARDS.md)
 - [Quality Plan](docs/QUALITY_PLAN.md)
 - [Release Checklist](docs/RELEASE_CHECKLIST.md)
@@ -150,8 +158,10 @@ Console.WriteLine(result.NodeResults.Single(n => n.NodeId == 2).Displacement.Y);
 - No plate solver, solid, cable, spring, or nonlinear concrete cracking elements.
 - No P-Delta, plastic hinge, modal, dynamic, time-history, response-spectrum, or nonlinear analysis.
 - No automatic wind/seismic load generator yet.
-- Frame formulation is an MVP Euler-Bernoulli beam-column implementation without rigid offsets or shear deformation.
-- Member force station results are linearly interpolated between recovered local end forces; denser stations improve diagram sampling density but are not a full distributed-load diagram engine.
+- Support settlement and imposed displacement are global node properties that apply to every load case and combination in the model; load-case-specific support movement and UI editing are not implemented yet.
+- Rigid-end zones/insertion points are linear connection-offset transformations. Temperature loading is uniform axial member temperature only. Panel-zone effects, thermal gradients, and nonlinear joint/soil behavior are not implemented.
+- Euler-Bernoulli is the default frame formulation. Timoshenko shear deformation is optional and uses configured shear correction factors with gross section area.
+- For member point loads and uniform distributed loads, station recovery follows the tracked local load shape for local axial, shear, and bending diagrams. Point moments produce torsion/bending jumps where applicable. Internal point-load locations expose left and right samples so discontinuities can be drawn explicitly. Self-weight-only diagrams and unsupported load types still use end-force interpolation; this is not yet a complete member-load diagram engine.
 - Real-section rendering is visual only; it does not change stiffness, capacity, section property calculation, or solver behavior.
 - Dense matrix solving is currently used; true sparse storage and sparse solving are future work.
 - Design checks are preliminary and must not be used as final professional design output.
@@ -159,12 +169,12 @@ Console.WriteLine(result.NodeResults.Single(n => n.NodeId == 2).Displacement.Y);
 
 ## Immediate Development Priorities
 
-1. Refactor `StructuralSolver` into validation, assembly, element formulation, result recovery, diagnostics, and design modules.
-2. Keep all engineering calculations in SI base units and add an explicit unit-conversion layer for UI/reporting.
-3. Add regression benchmarks against closed-form examples and trusted external tools.
-4. Improve 3D frame member behavior: releases, rigid offsets, load recovery, and force diagrams.
-5. Introduce building-level objects: grids, stories, beams, columns, braces, floor loads, and diaphragms.
-6. Add Thai load templates, load combinations, and report output.
-7. Build steel design first, then RC design, then shell/slab/wall modeling.
+1. Complete Milestone A product/engineering approval and record named reviewers.
+2. Complete Milestone B Model3D V1 domain, analysis, UI, reporting, and Python review.
+3. Add current-C#-to-Model3D adapters with regression parity; do not connect the new contract directly to the solver.
+4. Implement Milestone C persistence, migration, recovery, and compatibility before large UI authoring work.
+5. Continue solver qualification without silently changing current signs, units, or project files.
 
 See [Detailed Roadmap](docs/ROADMAP.md) for the full phased plan.
+
+See [Phase 1 Frame Benchmarks](docs/FRAME_BENCHMARKS.md) for the automated and manual external-comparison workflow.

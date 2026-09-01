@@ -42,6 +42,9 @@ Use for:
 - project file compatibility
 - sign convention issues
 - self-weight and load application behavior
+- prescribed support displacement/rotation, including closed-form reactions and unconstrained-DOF validation
+- rigid-end/insertion-offset transformations, release condensation, Timoshenko option, and uniform temperature restraint
+- member force-diagram shape, including UDL curvature and left/right values across point-load jumps
 - line-element analysis behavior when non-solver model objects such as area placeholders are present
 
 ### Model Representation Tests
@@ -51,6 +54,9 @@ Use for:
 - creation of core model DTOs that are not analyzed yet
 - JSON import/export round trips for schema compatibility
 - validation diagnostics for unsupported or incomplete model data
+- stable GUID identity under rename, copy, delete/undo restoration, and import
+- strict Model3D JSON round-trip, malformed/unknown input, and schema-version rejection
+- local axes, releases, offsets, springs, master-slave cycles, and unsupported area preflight
 
 ## Required Checks Before Merge
 
@@ -107,5 +113,7 @@ For analysis/design changes, review should check:
 - boundary-condition handling
 - reaction recovery
 - result recovery
+- member force-diagram continuity and intentional point-load discontinuities
 - test coverage
 - report wording
+- benchmark comparisons using `docs/FRAME_BENCHMARKS.md` before accepting external-reference equivalence

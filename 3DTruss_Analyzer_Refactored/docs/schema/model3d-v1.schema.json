@@ -14,7 +14,15 @@
     "analysisDefinitions": { "$ref": "#/$defs/analysisDefinitions" },
     "presentationSettings": {
       "type": "object", "additionalProperties": false,
-      "properties": { "theme": { "type": "string" }, "activeView": { "type": "string" } }
+      "properties": {
+        "theme": { "type": "string" }, "activeView": { "type": "string" },
+        "groupDisplayColors": {
+          "type": "object", "propertyNames": { "$ref": "#/$defs/guid" },
+          "additionalProperties": { "type": "string", "pattern": "^#[0-9A-Fa-f]{6}$" }
+        },
+        "labelScale": { "type": "number", "exclusiveMinimum": 0 },
+        "transparency": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
     },
     "auditMetadata": {
       "type": "object", "additionalProperties": false,

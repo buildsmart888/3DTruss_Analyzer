@@ -111,6 +111,24 @@ public sealed class MilestoneDApplicationTests
         Assert.DoesNotContain(new TrussAnalyzer.Core.Domain.V1.Model3DValidator().Validate(grouped), issue => issue.Severity == TrussAnalyzer.Core.Domain.V1.ValidationSeverity.Error);
     }
 
+    [Fact]
+    public void PhysicalModelEditor_UpdatesNodeAndPresentationWithoutChangingEngineeringIdentity()
+    {
+        var editor = new PhysicalModelEditor();
+        var nodeId = Guid.Parse("44444444-4444-4444-4444-444444444444");
+        var groupId = Guid.Parse("55555555-5555-5555-5555-555555555555");
+        var original = editor.AddNode(new TrussAnalyzer.Core.Domain.V1.ProjectDocument(), "N1", new(0, 0, 0), nodeId);
+        var grouped = editor.CreateGroup(original, "Selected", new[] { nodeId }, groupId);
+        var edited = editor.UpdateNode(grouped, nodeId, "N-EDIT", new(2.5, -1, 3));
+        var colored = editor.SetGroupDisplayColor(edited, groupId, "#e66928");
+
+        Assert.Equal(nodeId, colored.Model.Nodes.Single().Id);
+        Assert.Equal("N-EDIT", colored.Model.Nodes.Single().Label);
+        Assert.Equal(new TrussAnalyzer.Core.Domain.V1.Point3DValue(2.5, -1, 3), colored.Model.Nodes.Single().Position);
+        Assert.Equal("#E66928", colored.PresentationSettings.GroupDisplayColors[groupId]);
+        Assert.Equal(grouped.Model.Groups.Single().ObjectIds, colored.Model.Groups.Single().ObjectIds);
+    }
+
     private static StructuralModel CreateStableTruss()
     {
         var model = new StructuralModel();

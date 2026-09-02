@@ -98,6 +98,10 @@ public sealed record PresentationSettings
 {
     public string Theme { get; init; } = "System";
     public string ActiveView { get; init; } = "Isometric";
+    /// <summary>Display-only group colours, keyed by ModelGroup3D identity. Values are #RRGGBB.</summary>
+    public Dictionary<Guid, string> GroupDisplayColors { get; init; } = new();
+    public double LabelScale { get; init; } = 1.0;
+    public double Transparency { get; init; }
 }
 
 public sealed record Model3D

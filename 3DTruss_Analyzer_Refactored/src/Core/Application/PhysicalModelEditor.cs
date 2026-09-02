@@ -14,11 +14,16 @@ public sealed class PhysicalModelEditor
     }
 
     public ProjectDocument MoveNode(ProjectDocument document, Guid nodeId, Point3DValue position)
+        => UpdateNode(document, nodeId, GetNode(document, nodeId).Label, position);
+
+    /// <summary>Updates typed node properties while preserving its stable identity and connected objects.</summary>
+    public ProjectDocument UpdateNode(ProjectDocument document, Guid nodeId, string label, Point3DValue position)
     {
+        EnsureLabel(label);
         var model = CopyModel(document);
         int index = model.Nodes.FindIndex(node => node.Id == nodeId);
         if (index < 0) throw new InvalidOperationException($"Node '{nodeId}' was not found.");
-        model.Nodes[index] = model.Nodes[index] with { Position = position };
+        model.Nodes[index] = model.Nodes[index] with { Label = label.Trim(), Position = position };
         return WithModel(document, model);
     }
 
@@ -46,6 +51,19 @@ public sealed class PhysicalModelEditor
         return WithModel(document, model);
     }
 
+    /// <summary>Changes only presentation metadata; it never changes Model3D engineering properties.</summary>
+    public ProjectDocument SetGroupDisplayColor(ProjectDocument document, Guid groupId, string hexColor)
+    {
+        var color = hexColor ?? throw new ArgumentNullException(nameof(hexColor));
+        if (!System.Text.RegularExpressions.Regex.IsMatch(color, "^#[0-9A-Fa-f]{6}$"))
+            throw new ArgumentException("Group colour must be a #RRGGBB value.", nameof(hexColor));
+        if (!document.Model.Groups.Any(group => group.Id == groupId))
+            throw new InvalidOperationException($"Group '{groupId}' was not found.");
+        var colors = document.PresentationSettings.GroupDisplayColors.ToDictionary(pair => pair.Key, pair => pair.Value);
+        colors[groupId] = color.ToUpperInvariant();
+        return document with { PresentationSettings = document.PresentationSettings with { GroupDisplayColors = colors } };
+    }
+
     private static ProjectDocument WithModel(ProjectDocument document, Model3D model) => document with
     {
         Model = model,
@@ -59,6 +77,9 @@ public sealed class PhysicalModelEditor
         Springs = document.Model.Springs.ToList(), PrescribedMovements = document.Model.PrescribedMovements.ToList(), RigidLinks = document.Model.RigidLinks.ToList(),
         Constraints = document.Model.Constraints.ToList(), Levels = document.Model.Levels.ToList(), Grids = document.Model.Grids.ToList(), Groups = document.Model.Groups.ToList()
     };
+
+    private static Node3D GetNode(ProjectDocument document, Guid nodeId) => document.Model.Nodes.FirstOrDefault(node => node.Id == nodeId)
+        ?? throw new InvalidOperationException($"Node '{nodeId}' was not found.");
 
     private static void EnsureLabel(string label) { if (string.IsNullOrWhiteSpace(label)) throw new ArgumentException("A physical object label is required.", nameof(label)); }
 }

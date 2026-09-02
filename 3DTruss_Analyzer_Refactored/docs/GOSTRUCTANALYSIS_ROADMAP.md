@@ -391,9 +391,9 @@ Status Bar
 ## Milestone E - Physical Model Workspace
 
 Status: In progress. The first Model3D physical-authoring slice now provides GUID-preserving node/frame/truss/group
-commands, undo/redo integration, a searchable physical object tree, selection status, starter material/section
-defaults, and staged ISO/plan/label/transparency controls in the WPF shell. Full graphical picking, snapping,
-object property editing, group color rendering, and 3D synchronization remain open.
+commands, undo/redo integration, a searchable physical object tree, selected-node typed property editing, starter
+material/section defaults, and presentation-only ISO/plan/label/transparency/group-colour metadata in the WPF
+shell. Full graphical picking, snapping, rendering of group colours, and graphical 3D synchronization remain open.
 
 ### Goal
 

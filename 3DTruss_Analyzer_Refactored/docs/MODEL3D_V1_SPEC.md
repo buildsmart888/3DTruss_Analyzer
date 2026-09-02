@@ -116,4 +116,5 @@ returning a partially defaulted document.
 - [ ] Python reviewer round-trips the schema without identity or numeric drift.
 - [x] C# creation, equality, round-trip, malformed/unknown JSON, identity, units, geometry, release,
       spring, constraint, and unsupported-area tests pass.
-- [ ] Model3D-to-StructuralModel adapter is reviewed in the next roadmap slice; it is not part of V1 specification.
+- [x] Current C# `StructuralModel ↔ Model3D` adapter has frame parity coverage and explicit lossy-data diagnostics.
+- [ ] Adapter behavior is reviewed by the Domain and Analysis reviewers before it is used in a migration workflow.

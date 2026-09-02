@@ -57,6 +57,8 @@ Use for:
 - stable GUID identity under rename, copy, delete/undo restoration, and import
 - strict Model3D JSON round-trip, malformed/unknown input, and schema-version rejection
 - local axes, releases, offsets, springs, master-slave cycles, and unsupported area preflight
+- `.gosa` package/manifest round-trip, atomic-save backup, interrupted temporary save, autosave recovery, and corrupt-snapshot fallback
+- deterministic legacy/schema-v2 migration against golden fixtures, with every lossy conversion visible in the report
 
 ## Required Checks Before Merge
 

@@ -22,9 +22,14 @@ GUID references, canonical SI values, structured validation, strict JSON behavio
 metadata outside engineering model state. It is intentionally separate from the current integer-ID
 `StructuralModel` solver contract.
 
-Model3D V1 must not be passed directly to `StructuralSolver`. A tested adapter with explicit defaulting,
-unsupported-data reporting, and result parity is the next roadmap slice. Production persistence,
-legacy migration, `.gosa`, atomic save, backup, and recovery remain Milestone C responsibilities.
+Model3D V1 must not be passed directly to `StructuralSolver`. `Core/Domain/V1/Adapters` now provides a
+tested `StructuralModel ↔ Model3D` boundary with deterministic legacy-ID mapping, explicit conversion
+diagnostics, and frame parity tests. It is an adaptation/migration aid, not a new solver path.
+
+`Core/IO/Projects` now owns the Milestone C serializer/migration interfaces, current-C#/legacy JSON file
+migration, `.gosa` packaging, atomic save, backup, autosave, and recovery. The migration CLI lives under
+`tools/ProjectMigration`. Python and Warehouse3D adapters, source-file recovery UX, and project attachments
+remain pending because no versioned source fixtures/contracts are available.
 
 ## Target Architecture
 

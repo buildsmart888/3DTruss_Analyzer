@@ -238,11 +238,11 @@ Establish one product direction without breaking existing namespaces, files, or 
 
 ## Milestone B - Model3D V1 Specification
 
-Status: In Review (contract, validation, JSON Schema, example, and automated tests implemented;
-domain/analysis/UI/reporting/Python reviewer approvals pending).
+Status: In Review (contract, validation, JSON Schema, example, `StructuralModel ↔ Model3D` adapter,
+and automated parity tests implemented; domain/analysis/UI/reporting/Python reviewer approvals pending).
 
 Evidence: `MODEL3D_V1_SPEC.md`, `src/Core/Domain/V1/`, `docs/schema/model3d-v1.schema.json`,
-`examples/model3d/v1/minimal-frame.json`, and `tests/Model3DV1Tests.cs`.
+`examples/model3d/v1/minimal-frame.json`, `tests/Model3DV1Tests.cs`, and `tests/Model3DAdapterTests.cs`.
 
 ### Goal
 
@@ -290,6 +290,13 @@ Approve a solver-independent 3D model contract before large UI or file-format wo
 - Plate/shell/solid stiffness.
 
 ## Milestone C - Persistence, Migration, And Compatibility
+
+Status: In Progress (`.gosa` package serializer, atomic save/backup/autosave/recovery, C# schema-v2 and
+legacy JSON migration, CLI, reports, and golden fixtures implemented. Python Frame/Truss/Hybrid and
+Warehouse3D adapters remain blocked on versioned source schemas and fixtures).
+
+Evidence: `MILESTONE_C_COMPATIBILITY.md`, `src/Core/IO/Projects/`, `tools/ProjectMigration/`,
+`examples/migration/`, and `tests/GosaProjectStoreTests.cs`.
 
 ### Goal
 

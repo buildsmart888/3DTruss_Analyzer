@@ -1,0 +1,13 @@
+{
+  "projectName": "Golden legacy truss fixture",
+  "materials": [
+    { "id": 1, "name": "Steel", "youngsModulus": 200000000000, "poissonsRatio": 0.3, "density": 7850 }
+  ],
+  "nodes": [
+    { "id": 1, "x": 0, "y": 0, "z": 0, "constraintX": true, "constraintY": true, "constraintZ": true },
+    { "id": 2, "x": 3, "y": 0, "z": 0, "constraintY": true, "constraintZ": true, "loadX": 10000 }
+  ],
+  "elements": [
+    { "id": 1, "startNodeId": 1, "endNodeId": 2, "area": 0.003, "materialId": 1 }
+  ]
+}

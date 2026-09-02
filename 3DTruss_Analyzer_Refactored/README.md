@@ -83,6 +83,8 @@ PyNite is not recommended as the core engine for this C# product. OpenSees may b
 - [Detailed Roadmap](docs/ROADMAP.md)
 - [GOStructAnalysis Product And Model3D Roadmap](docs/GOSTRUCTANALYSIS_ROADMAP.md)
 - [Product Governance, Glossary, And Ownership](docs/PRODUCT_GOVERNANCE.md)
+- [Milestone Approval Record](docs/MILESTONE_APPROVAL_RECORD.md)
+- [Milestone C Persistence And Compatibility](docs/MILESTONE_C_COMPATIBILITY.md)
 - [Model3D V1 Specification](docs/MODEL3D_V1_SPEC.md)
 - [Model3D V1 JSON Schema](docs/schema/model3d-v1.schema.json)
 - [Engineering Standards](docs/ENGINEERING_STANDARDS.md)
@@ -171,8 +173,8 @@ Console.WriteLine(result.NodeResults.Single(n => n.NodeId == 2).Displacement.Y);
 
 1. Complete Milestone A product/engineering approval and record named reviewers.
 2. Complete Milestone B Model3D V1 domain, analysis, UI, reporting, and Python review.
-3. Add current-C#-to-Model3D adapters with regression parity; do not connect the new contract directly to the solver.
-4. Implement Milestone C persistence, migration, recovery, and compatibility before large UI authoring work.
+3. Obtain named reviewer approvals in the Milestone Approval Record before treating A/B as complete.
+4. Extend the current-C#-to-Model3D adapter and Milestone C persistence/migration foundation with fixtures, `.gosa`, atomic save, recovery, and compatibility reporting before large UI authoring work.
 5. Continue solver qualification without silently changing current signs, units, or project files.
 
 See [Detailed Roadmap](docs/ROADMAP.md) for the full phased plan.

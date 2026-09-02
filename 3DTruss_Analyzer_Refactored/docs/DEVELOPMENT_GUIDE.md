@@ -21,6 +21,14 @@ dotnet build TrussAnalyzer.sln
 dotnet test TrussAnalyzer.sln
 ```
 
+Migrate an existing C# JSON file to a reviewable `.gosa` package:
+
+```bash
+dotnet run --project tools/ProjectMigration/ProjectMigration.csproj -- input.json output.gosa
+```
+
+Review every migration warning before replacing an existing project. The CLI does not modify its input.
+
 Run the desktop UI:
 
 ```bash

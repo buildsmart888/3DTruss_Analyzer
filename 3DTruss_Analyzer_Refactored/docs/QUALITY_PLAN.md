@@ -59,6 +59,8 @@ Use for:
 - local axes, releases, offsets, springs, master-slave cycles, and unsupported area preflight
 - `.gosa` package/manifest round-trip, atomic-save backup, interrupted temporary save, autosave recovery, and corrupt-snapshot fallback
 - deterministic legacy/schema-v2 migration against golden fixtures, with every lossy conversion visible in the report
+- `ProjectDocument` analysis preflight, GUID-keyed immutable snapshot provenance, and unsupported/lossy execution blocking
+- document dirty/save/autosave/recovery state and toolkit-independent undo/redo command history
 
 ## Required Checks Before Merge
 
@@ -75,6 +77,10 @@ For solver or design changes, also add or update:
 - engineering notes
 - example model if user-facing
 - report expectations if output changes
+
+For Milestone D shell changes, compile the WPF shell and manually smoke-test both the default WinForms launch
+and `--wpf-shell` at 100/125/150% DPI before release. Automated tests cover the application services without
+opening a desktop window.
 
 For alternative linear solver paths:
 

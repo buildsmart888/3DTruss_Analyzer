@@ -76,9 +76,13 @@ public sealed class GosaProjectStore : IProjectFileStore
     public ProjectRecoveryResult RecoverLatest(string projectPath)
     {
         string fullPath = Path.GetFullPath(projectPath);
-        var candidates = new[] { fullPath, AutosavePath(fullPath), BackupPath(fullPath) }
-            .Where(File.Exists)
-            .OrderByDescending(File.GetLastWriteTimeUtc)
+        // NTFS timestamp resolution can make snapshots written moments apart equal. On a tie, prefer the
+        // autosave that was explicitly written after the active document, then the primary, then the backup.
+        var candidates = new[] { (Path: fullPath, Priority: 1), (Path: AutosavePath(fullPath), Priority: 0), (Path: BackupPath(fullPath), Priority: 2) }
+            .Where(candidate => File.Exists(candidate.Path))
+            .OrderByDescending(candidate => File.GetLastWriteTimeUtc(candidate.Path))
+            .ThenBy(candidate => candidate.Priority)
+            .Select(candidate => candidate.Path)
             .ToList();
         var rejected = new List<string>();
         foreach (string candidate in candidates)

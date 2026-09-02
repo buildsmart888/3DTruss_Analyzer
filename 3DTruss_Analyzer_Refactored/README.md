@@ -85,6 +85,7 @@ PyNite is not recommended as the core engine for this C# product. OpenSees may b
 - [Product Governance, Glossary, And Ownership](docs/PRODUCT_GOVERNANCE.md)
 - [Milestone Approval Record](docs/MILESTONE_APPROVAL_RECORD.md)
 - [Milestone C Persistence And Compatibility](docs/MILESTONE_C_COMPATIBILITY.md)
+- [Milestone D Solver/API Parity Audit](docs/MILESTONE_D_SOLVER_API_PARITY_AUDIT.md)
 - [Model3D V1 Specification](docs/MODEL3D_V1_SPEC.md)
 - [Model3D V1 JSON Schema](docs/schema/model3d-v1.schema.json)
 - [Engineering Standards](docs/ENGINEERING_STANDARDS.md)
@@ -107,6 +108,8 @@ dotnet restore TrussAnalyzer.sln
 dotnet build TrussAnalyzer.sln
 dotnet test TrussAnalyzer.sln
 dotnet run --project src/UI/WinForms/TrussAnalyzer.UI.csproj
+# Staged WPF shell hosting the compatible WinForms workspace
+dotnet run --project src/UI/WinForms/TrussAnalyzer.UI.csproj -- --wpf-shell
 ```
 
 ## Coordinate And Sign Convention

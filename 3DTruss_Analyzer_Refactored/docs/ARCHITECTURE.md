@@ -31,6 +31,19 @@ migration, `.gosa` packaging, atomic save, backup, autosave, and recovery. The m
 `tools/ProjectMigration`. Python and Warehouse3D adapters, source-file recovery UX, and project attachments
 remain pending because no versioned source fixtures/contracts are available.
 
+## Milestone D Application Foundation
+
+`Core/Application` owns UI-toolkit-independent document lifecycle, undo/redo command history, settings,
+crash logging, background-task execution, and the only `ProjectDocument -> StructuralSolver` application
+analysis route. `ProjectAnalysisService` validates Model3D, reports adapter/solver preflight diagnostics,
+blocks lossy/unsupported execution, and produces an immutable GUID-keyed `AnalysisSnapshot` with checksum,
+selection identity, solver identity, timestamp, warnings, and equilibrium.
+
+The WPF `GOStructAnalysisShellWindow` is a staged shell in `UI/WinForms/AppShell`. It hosts the compatible
+WinForms `MainForm` through `WindowsFormsHost`; no solver equations or engineering-model mutations live in
+WPF event handlers. Start it with `dotnet run --project src/UI/WinForms/TrussAnalyzer.UI.csproj -- --wpf-shell`.
+The default launch remains the legacy WinForms entry point during staged migration.
+
 ## Target Architecture
 
 Recommended structure:

@@ -335,9 +335,13 @@ Introduce Model3D without abandoning current projects or benchmark data.
 
 ## Milestone D - Application Foundation And WPF Shell
 
-Status: Started with a solver/API parity audit. The audit confirms that `StructuralSolver` is the only
-production-candidate analysis API; `ProjectDocument` needs an explicit application analysis boundary before
-any WPF shell invokes analysis. See `MILESTONE_D_SOLVER_API_PARITY_AUDIT.md`.
+Status: In progress. Solver/API parity audit, toolkit-independent document/history/background/settings
+foundations, `ProjectDocument` analysis preflight/snapshot boundary, and a staged WPF shell hosting the legacy
+WinForms workspace are implemented. The shell now has project open/save/recovery, recent-project history,
+autosave scheduling, cancellation/progress, unsaved-close guard, resettable persisted panes, and Thai/English
+toggle resources. Manual 100/125/150% DPI, focus traversal, and full open-save-reopen desktop smoke evidence
+remain the release gate; do not mark this milestone complete without that evidence. See
+`MILESTONE_D_SOLVER_API_PARITY_AUDIT.md`.
 
 ### Goal
 
@@ -385,6 +389,11 @@ Status Bar
 - Legacy screens can be retired one workflow at a time.
 
 ## Milestone E - Physical Model Workspace
+
+Status: In progress. The first Model3D physical-authoring slice now provides GUID-preserving node/frame/truss/group
+commands, undo/redo integration, a searchable physical object tree, selection status, starter material/section
+defaults, and staged ISO/plan/label/transparency controls in the WPF shell. Full graphical picking, snapping,
+object property editing, group color rendering, and 3D synchronization remain open.
 
 ### Goal
 

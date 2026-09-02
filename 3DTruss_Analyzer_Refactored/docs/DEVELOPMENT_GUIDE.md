@@ -48,6 +48,19 @@ dotnet run --project src/UI/WinForms/TrussAnalyzer.UI.csproj
 7. Preliminary design/safety checks.
 8. Global translational equilibrium check.
 9. Solver diagnostics.
+
+## Application Foundation
+
+New document lifecycle or UI workflow work must use `Core/Application` rather than call persistence or
+`StructuralSolver` from a control event handler. `ProjectAnalysisService` is the supported route for a
+`ProjectDocument` analysis request; it returns a GUID-keyed `AnalysisSnapshot` only after Model3D,
+adapter, and solver preflight succeeds. Do not replace this with a direct Model3D-to-solver call.
+
+The staged WPF shell may be launched explicitly while the WinForms workspace remains the default:
+
+```bash
+dotnet run --project src/UI/WinForms/TrussAnalyzer.UI.csproj -- --wpf-shell
+```
 10. Analysis result DTO assembly.
 
 ## Refactoring Direction

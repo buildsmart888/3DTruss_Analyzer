@@ -335,6 +335,10 @@ Introduce Model3D without abandoning current projects or benchmark data.
 
 ## Milestone D - Application Foundation And WPF Shell
 
+Status: Started with a solver/API parity audit. The audit confirms that `StructuralSolver` is the only
+production-candidate analysis API; `ProjectDocument` needs an explicit application analysis boundary before
+any WPF shell invokes analysis. See `MILESTONE_D_SOLVER_API_PARITY_AUDIT.md`.
+
 ### Goal
 
 Create the application boundary needed for a maintainable workflow-oriented desktop product.

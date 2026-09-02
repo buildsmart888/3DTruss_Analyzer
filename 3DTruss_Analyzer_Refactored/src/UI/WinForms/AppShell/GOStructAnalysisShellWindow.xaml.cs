@@ -9,16 +9,21 @@ using System.Windows.Controls;
 using Microsoft.Win32;
 using TrussAnalyzer.Core.Application;
 using TrussAnalyzer.Core.Domain.V1;
+using Forms = System.Windows.Forms;
+using TrussAnalyzer.UI.WinForms;
 
 public partial class GOStructAnalysisShellWindow : Window
 {
+    private readonly MainForm _legacy = new() { TopLevel = false, FormBorderStyle = Forms.FormBorderStyle.None, Dock = Forms.DockStyle.Fill };
     private readonly ShellViewModel _vm = new();
     public GOStructAnalysisShellWindow()
     {
         InitializeComponent(); DataContext = _vm; Width = _vm.Settings.WindowWidth; Height = _vm.Settings.WindowHeight; LeftColumn.Width = new GridLength(_vm.Settings.LeftPaneWidth); RightColumn.Width = new GridLength(_vm.Settings.RightPaneWidth);
+        LegacyHost.Child = _legacy; Loaded += (_, _) => _legacy.Show(); Closed += (_, _) => _legacy.Dispose();
         PhysicalViewport.SetDocument(_vm.CurrentDocument);
         PhysicalViewport.ObjectSelected += (_, id) => { _vm.SelectModelById(id); ModelTree.SelectedItem = _vm.SelectedTreeItem; PhysicalViewport.SelectObject(id); };
-        _vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ShellViewModel.CurrentDocument)) PhysicalViewport.SetDocument(_vm.CurrentDocument); if (e.PropertyName == nameof(ShellViewModel.SelectedObjectId)) PhysicalViewport.SelectObject(_vm.SelectedObjectId); };
+        _vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ShellViewModel.CurrentDocument)) { PhysicalViewport.SetDocument(_vm.CurrentDocument); UpdateWorkspace(); } if (e.PropertyName == nameof(ShellViewModel.SelectedObjectId)) PhysicalViewport.SelectObject(_vm.SelectedObjectId); if (e.PropertyName == nameof(ShellViewModel.CurrentStage)) UpdateWorkspace(); };
+        UpdateWorkspace();
     }
     private void NewRequested(object s, RoutedEventArgs e) => _vm.CreateNew();
     private void OpenRequested(object s, RoutedEventArgs e) { var d = new OpenFileDialog { Filter = "GOStructAnalysis (*.gosa)|*.gosa" }; if (d.ShowDialog(this) == true) _vm.Open(d.FileName); }
@@ -34,6 +39,13 @@ public partial class GOStructAnalysisShellWindow : Window
     private void RecentProjectSelected(object s, SelectionChangedEventArgs e) { if (e.AddedItems.OfType<string>().FirstOrDefault() is { } path) _vm.Open(path); }
     private void ResetLayoutRequested(object s, RoutedEventArgs e) { LeftColumn.Width = new GridLength(220); RightColumn.Width = new GridLength(280); }
     private void LanguageRequested(object s, RoutedEventArgs e) => _vm.ToggleLanguage();
+    private void UpdateWorkspace()
+    {
+        bool physical = string.Equals(_vm.CurrentStage, "Physical", StringComparison.OrdinalIgnoreCase);
+        PhysicalViewport.Visibility = physical ? Visibility.Visible : Visibility.Collapsed;
+        LegacyHost.Visibility = physical ? Visibility.Collapsed : Visibility.Visible;
+        EmptyModelOverlay.Visibility = physical && _vm.CurrentDocument is null ? Visibility.Visible : Visibility.Collapsed;
+    }
     private void WindowClosing(object? s, CancelEventArgs e)
     {
         if (_vm.IsDirty)

@@ -129,6 +129,25 @@ public sealed class MilestoneDApplicationTests
         Assert.Equal(grouped.Model.Groups.Single().ObjectIds, colored.Model.Groups.Single().ObjectIds);
     }
 
+    [Fact]
+    public void PhysicalModelSnapper_PrefersStableEndpointThenRoundsToGrid()
+    {
+        var nodeId = Guid.Parse("66666666-6666-6666-6666-666666666666");
+        var document = new TrussAnalyzer.Core.Domain.V1.ProjectDocument
+        {
+            Model = new TrussAnalyzer.Core.Domain.V1.Model3D { Nodes = new() { new() { Id = nodeId, Label = "N1", Position = new(1, 2, 3) } } }
+        };
+        var snapper = new PhysicalModelSnapper();
+
+        var endpoint = snapper.Snap(document, new(1.08, 2, 3), gridSpacing: .5, endpointTolerance: .1);
+        var grid = snapper.Snap(document, new(1.26, 2.24, 3.74), gridSpacing: .5, endpointTolerance: .1);
+
+        Assert.Equal(PhysicalSnapKind.Endpoint, endpoint.Kind);
+        Assert.Equal(nodeId, endpoint.EndpointNodeId);
+        Assert.Equal(new TrussAnalyzer.Core.Domain.V1.Point3DValue(1.5, 2, 3.5), grid.Position);
+        Assert.Equal(PhysicalSnapKind.Grid, grid.Kind);
+    }
+
     private static StructuralModel CreateStableTruss()
     {
         var model = new StructuralModel();

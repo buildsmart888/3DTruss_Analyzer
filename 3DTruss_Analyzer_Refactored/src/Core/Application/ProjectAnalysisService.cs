@@ -120,6 +120,26 @@ public sealed class ProjectAnalysisService
                 yield return new AnalysisPreflightMessage("ANALYSIS-PATTERN-MAPPING", "Error",
                     $"Load pattern '{pattern.Label}' has no stable StructuralModel case ID. Import it through an explicit adapter or define a supported case mapping.", pattern.Id);
         }
+        if (request.Kind == ProjectAnalysisSelectionKind.LoadCombination && valid)
+        {
+            var combination = document.LoadDefinitions.LoadCombinations.Single(value => value.Id == request.SelectionId);
+            if (combination.LoadPatternFactors.Count == 0)
+                yield return new AnalysisPreflightMessage("ANALYSIS-COMBINATION-EMPTY", "Error",
+                    $"Load combination '{combination.Label}' does not reference any load patterns.", combination.Id);
+            foreach (var factor in combination.LoadPatternFactors)
+            {
+                var pattern = document.LoadDefinitions.LoadPatterns.FirstOrDefault(value => value.Id == factor.Key);
+                if (pattern is null)
+                    yield return new AnalysisPreflightMessage("ANALYSIS-COMBINATION-REFERENCE", "Error",
+                        $"Load combination '{combination.Label}' references missing load pattern '{factor.Key}'.", combination.Id);
+                else if (string.IsNullOrWhiteSpace(pattern.Source.SourceObjectId))
+                    yield return new AnalysisPreflightMessage("ANALYSIS-COMBINATION-MAPPING", "Error",
+                        $"Load combination '{combination.Label}' references pattern '{pattern.Label}' without a solver case ID.", pattern.Id);
+                if (double.IsNaN(factor.Value) || double.IsInfinity(factor.Value))
+                    yield return new AnalysisPreflightMessage("ANALYSIS-COMBINATION-FACTOR", "Error",
+                        $"Load combination '{combination.Label}' contains a non-finite factor.", combination.Id);
+            }
+        }
     }
 
     private static string ResolveLoadCaseId(ProjectDocument document, Guid patternId) =>

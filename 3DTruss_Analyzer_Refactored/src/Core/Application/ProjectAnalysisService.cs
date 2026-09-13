@@ -26,6 +26,9 @@ public sealed record AnalysisSnapshot
     public DateTimeOffset CreatedUtc { get; init; }
     public string SolverName { get; init; } = string.Empty;
     public string SolverVersion { get; init; } = string.Empty;
+    public SolverDiagnostics Diagnostics { get; init; } = new();
+    public double MaxDisplacement { get; init; }
+    public double MaxUtilization { get; init; }
     public IReadOnlyList<string> Warnings { get; init; } = Array.Empty<string>();
     public IReadOnlyList<AnalysisSnapshotNode> Nodes { get; init; } = Array.Empty<AnalysisSnapshotNode>();
     public IReadOnlyList<AnalysisSnapshotMember> Members { get; init; } = Array.Empty<AnalysisSnapshotMember>();
@@ -88,6 +91,18 @@ public sealed class ProjectAnalysisService
         }
     }
 
+    /// <summary>Runs every declared load pattern and combination independently, preserving each snapshot identity.</summary>
+    public IReadOnlyList<ProjectAnalysisResult> AnalyzeAll(ProjectDocument document)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        var requests = document.LoadDefinitions.LoadPatterns.Select(pattern =>
+                new ProjectAnalysisRequest(ProjectAnalysisSelectionKind.LoadPattern, pattern.Id))
+            .Concat(document.LoadDefinitions.LoadCombinations.Select(combination =>
+                new ProjectAnalysisRequest(ProjectAnalysisSelectionKind.LoadCombination, combination.Id)))
+            .ToArray();
+        return requests.Select(request => Analyze(document, request)).ToArray();
+    }
+
     private static IEnumerable<AnalysisPreflightMessage> ValidateRequest(ProjectDocument document, ProjectAnalysisRequest request)
     {
         bool valid = request.Kind switch
@@ -123,6 +138,9 @@ public sealed class ProjectAnalysisService
             CreatedUtc = DateTimeOffset.UtcNow,
             SolverName = result.Diagnostics.SolverName,
             SolverVersion = Assembly.GetAssembly(typeof(StructuralSolver))?.GetName().Version?.ToString() ?? "unknown",
+            Diagnostics = result.Diagnostics,
+            MaxDisplacement = result.MaxDisplacement,
+            MaxUtilization = result.MaxUtilization,
             Warnings = preflight.Where(message => string.Equals(message.Severity, "Warning", StringComparison.Ordinal)).Select(message => $"{message.Code}: {message.Message}").ToArray(),
             Nodes = result.NodeResults.Select(node => new AnalysisSnapshotNode(nodes[node.NodeId], node.Displacement, node.Rotation, node.ReactionForce, node.ReactionMoment)).ToArray(),
             Members = result.ElementResults.Select(member => new AnalysisSnapshotMember(members[member.ElementId], member)).ToArray(),

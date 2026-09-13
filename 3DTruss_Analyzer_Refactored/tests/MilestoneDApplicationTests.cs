@@ -51,6 +51,19 @@ public sealed class MilestoneDApplicationTests
     }
 
     [Fact]
+    public void ProjectAnalysisService_AnalyzeAllPreservesDiagnosticsPerSelection()
+    {
+        var converted = new StructuralModelModel3DAdapter().ToProjectDocument(CreateStableTruss());
+        var results = new ProjectAnalysisService().AnalyzeAll(converted.Document);
+
+        Assert.NotEmpty(results);
+        var successful = results.Single(result => result.Succeeded);
+        var snapshot = Assert.IsType<AnalysisSnapshot>(successful.Snapshot);
+        Assert.True(snapshot.Diagnostics.TotalDof > 0);
+        Assert.Equal(snapshot.Diagnostics.EquilibriumResidualMagnitude, snapshot.Equilibrium.ResidualMagnitude);
+    }
+
+    [Fact]
     public void ProjectCommandHistory_UndoRedoMarksExpectedModelEdit()
     {
         int value = 0;

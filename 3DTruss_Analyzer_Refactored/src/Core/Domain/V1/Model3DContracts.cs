@@ -354,6 +354,8 @@ public sealed record LineLoadAssignment3D : LoadAssignment3D
     public Guid LineObjectId { get; init; }
     public LoadCoordinateBasis Basis { get; init; }
     public Vector3DValue ForcePerLength { get; init; }
+    /// <summary>Optional end intensity for linearly varying (trapezoidal) loads.</summary>
+    public Vector3DValue? EndForcePerLength { get; init; }
     public double StartRelativePosition { get; init; }
     public double EndRelativePosition { get; init; } = 1;
 }

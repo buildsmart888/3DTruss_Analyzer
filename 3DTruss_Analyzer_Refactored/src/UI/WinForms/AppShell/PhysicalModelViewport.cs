@@ -23,8 +23,13 @@ public sealed class PhysicalModelViewport : UserControl
     private readonly Dictionary<WpfModel3D, Guid> _modelIds = new();
     private ProjectDocument? _document;
     private Guid? _selectedId;
+    private double _workPlaneZ;
+    private Point3DValue _modelCenter;
+    private double _modelSpan = 10;
 
     public event EventHandler<Guid>? ObjectSelected;
+    public event EventHandler<Point3DValue>? PointPlaced;
+    public PlacementMode PlacementMode { get; set; }
 
     public PhysicalModelViewport()
     {
@@ -57,6 +62,7 @@ public sealed class PhysicalModelViewport : UserControl
 
         var nodes = _document.Model.Nodes.ToDictionary(node => node.Id);
         var (center, span) = GetBounds(_document.Model.Nodes);
+        _modelCenter = center; _modelSpan = span; _workPlaneZ = center.Z;
         _scene.Children.Add(new GridLinesVisual3D { Center = new(center.X, center.Y, 0), Width = span * 1.8, Length = span * 1.8, MajorDistance = 1, MinorDistance = 1, Thickness = .01, Fill = Brushes.LightSteelBlue });
         AddAxes(span);
         foreach (var line in _document.Model.LineObjects)
@@ -103,6 +109,13 @@ public sealed class PhysicalModelViewport : UserControl
 
     private void OnMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
     {
+        if (PlacementMode != PlacementMode.None)
+        {
+            PointPlaced?.Invoke(this, ScreenToWorkPlane(e.GetPosition(_viewport)));
+            e.Handled = true;
+            if (PlacementMode == PlacementMode.Node) PlacementMode = PlacementMode.None;
+            return;
+        }
         foreach (var hit in Viewport3DHelper.FindHits(_viewport.Viewport, e.GetPosition(_viewport)))
         {
             if (hit.Visual is not null && _visualIds.TryGetValue(hit.Visual, out var visualId) || hit.Model is not null && _modelIds.TryGetValue(hit.Model, out visualId))
@@ -110,6 +123,24 @@ public sealed class PhysicalModelViewport : UserControl
                 _selectedId = visualId; Refresh(); ObjectSelected?.Invoke(this, visualId); e.Handled = true; return;
             }
         }
+    }
+
+    public void BeginPlacement(PlacementMode mode, double? planeZ = null)
+    {
+        PlacementMode = mode;
+        if (planeZ is { } z) _workPlaneZ = z;
+        Focus();
+    }
+
+    private Point3DValue ScreenToWorkPlane(Point point)
+    {
+        // Authoring plane mapping is intentionally stable and camera-independent: the viewport is a
+        // work-plane editor, so a click maps to model bounds on XY and snaps in the application layer.
+        var width = Math.Max(1, _viewport.ActualWidth);
+        var height = Math.Max(1, _viewport.ActualHeight);
+        var x = _modelCenter.X + (point.X / width - .5) * _modelSpan * 1.8;
+        var y = _modelCenter.Y + (.5 - point.Y / height) * _modelSpan * 1.8;
+        return new Point3DValue(x, y, _workPlaneZ);
     }
 
     private void AddText(string text, Point3DValue position, Brush brush) => _scene.Children.Add(new BillboardTextVisual3D { Text = text, Position = ToMedia(position), Foreground = brush, Background = Brushes.White });
@@ -122,3 +153,5 @@ public sealed class PhysicalModelViewport : UserControl
         return (new((minX + maxX) / 2, (minY + maxY) / 2, (minZ + maxZ) / 2), span);
     }
 }
+
+public enum PlacementMode { None, Node, MemberStart, MemberEnd }

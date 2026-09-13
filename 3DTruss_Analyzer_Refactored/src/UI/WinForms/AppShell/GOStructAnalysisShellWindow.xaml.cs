@@ -22,6 +22,7 @@ public partial class GOStructAnalysisShellWindow : Window
         LegacyHost.Child = _legacy; Loaded += (_, _) => _legacy.Show(); Closed += (_, _) => _legacy.Dispose();
         PhysicalViewport.SetDocument(_vm.CurrentDocument);
         PhysicalViewport.ObjectSelected += (_, id) => { _vm.SelectModelById(id); ModelTree.SelectedItem = _vm.SelectedTreeItem; PhysicalViewport.SelectObject(id); };
+        PhysicalViewport.PointPlaced += (_, point) => _vm.HandlePointPlaced(point);
         _vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ShellViewModel.CurrentDocument)) { PhysicalViewport.SetDocument(_vm.CurrentDocument); UpdateWorkspace(); } if (e.PropertyName == nameof(ShellViewModel.SelectedObjectId)) PhysicalViewport.SelectObject(_vm.SelectedObjectId); if (e.PropertyName == nameof(ShellViewModel.CurrentStage)) UpdateWorkspace(); };
         UpdateWorkspace();
     }
@@ -33,7 +34,10 @@ public partial class GOStructAnalysisShellWindow : Window
     private void UndoRequested(object s, RoutedEventArgs e) => _vm.Undo(); private void RedoRequested(object s, RoutedEventArgs e) => _vm.Redo();
     private async void AnalyzeRequested(object s, RoutedEventArgs e) => await _vm.AnalyzeAsync(); private void CancelRequested(object s, RoutedEventArgs e) => _vm.Cancel();
     private void PhysicalRequested(object s, RoutedEventArgs e) => _vm.CurrentStage = "Physical"; private void LoadingRequested(object s, RoutedEventArgs e) => _vm.CurrentStage = "Loading"; private void AnalysisRequested(object s, RoutedEventArgs e) => _vm.CurrentStage = "Analysis"; private void ResultsRequested(object s, RoutedEventArgs e) => _vm.CurrentStage = "Results"; private void DesignRequested(object s, RoutedEventArgs e) => _vm.CurrentStage = "Design"; private void ReportRequested(object s, RoutedEventArgs e) => _vm.CurrentStage = "Report";
-    private void AddNodeRequested(object s, RoutedEventArgs e) => _vm.AddNode(); private void AddFrameRequested(object s, RoutedEventArgs e) => _vm.AddMember(false); private void AddTrussRequested(object s, RoutedEventArgs e) => _vm.AddMember(true); private void CreateGroupRequested(object s, RoutedEventArgs e) => _vm.CreateGroupFromSelection(); private void ColorGroupRequested(object s, RoutedEventArgs e) => _vm.CycleSelectedGroupColor();
+    private void AddNodeRequested(object s, RoutedEventArgs e) { PhysicalViewport.BeginPlacement(PlacementMode.Node); _vm.AnalysisStatusText = "Click the work plane to place a node."; }
+    private void AddFrameRequested(object s, RoutedEventArgs e) { _vm.BeginMemberPlacement(false); PhysicalViewport.BeginPlacement(PlacementMode.MemberStart); }
+    private void AddTrussRequested(object s, RoutedEventArgs e) { _vm.BeginMemberPlacement(true); PhysicalViewport.BeginPlacement(PlacementMode.MemberStart); }
+    private void CreateGroupRequested(object s, RoutedEventArgs e) => _vm.CreateGroupFromSelection(); private void ColorGroupRequested(object s, RoutedEventArgs e) => _vm.CycleSelectedGroupColor();
     private void IsoRequested(object s, RoutedEventArgs e) => _vm.SetView("Isometric"); private void PlanRequested(object s, RoutedEventArgs e) => _vm.SetView("Plan XY"); private void LabelRequested(object s, RoutedEventArgs e) => _vm.IncreaseLabelScale(); private void TransparencyRequested(object s, RoutedEventArgs e) => _vm.ToggleTransparency(); private void ApplyNodeRequested(object s, RoutedEventArgs e) => _vm.ApplySelectedNode();
     private void ModelSearchChanged(object s, TextChangedEventArgs e) => _vm.FilterModel(((TextBox)s).Text); private void ModelSelectionChanged(object s, SelectionChangedEventArgs e) { var item = e.AddedItems.OfType<PhysicalTreeItem>().FirstOrDefault(); _vm.SelectModel(item); PhysicalViewport.SelectObject(item?.Id); }
     private void RecentProjectSelected(object s, SelectionChangedEventArgs e) { if (e.AddedItems.OfType<string>().FirstOrDefault() is { } path) _vm.Open(path); }
@@ -73,7 +77,26 @@ public sealed class ShellViewModel : INotifyPropertyChanged, IDisposable
     public void SaveAs(string path) { try { _documents.SaveAs(path); AddRecent(path); AnalysisStatus = "Project saved"; } catch (Exception ex) { AnalysisStatus = ex.Message; } }
     public void Recover(string path) { try { _documents.Recover(path); AddRecent(_documents.CurrentPath!); AnalysisStatus = "Latest valid snapshot recovered"; } catch (Exception ex) { AnalysisStatus = ex.Message; } }
     public void Undo() { if (CanUndo) _history.Undo(); } public void Redo() { if (CanRedo) _history.Redo(); } public void Cancel() => _cts?.Cancel();
-    public void AddNode() { var doc = _documents.Current ?? CreateDocument(); int count = doc.Model.Nodes.Count; var snapped = _snapper.Snap(doc, new Point3DValue(count * 3, 0, 0)); ApplyEdit("Add node", value => _physical.AddNode(value, $"N{count + 1}", snapped.Position)); AnalysisStatus = $"Add node ({snapped.Kind.ToString().ToLowerInvariant()} snap)"; }
+    private bool _pendingTruss; private Guid? _pendingMemberStart;
+    public string AnalysisStatusText { get => AnalysisStatus; set => AnalysisStatus = value; }
+    public void AddNode() { var doc = _documents.Current ?? CreateDocument(); int count = doc.Model.Nodes.Count; var snapped = _snapper.Snap(doc, new Point3DValue(count * 3, 0, 0)); AddNodeAt(snapped.Position, snapped.Kind); }
+    public void BeginMemberPlacement(bool truss) { _pendingTruss = truss; _pendingMemberStart = null; AnalysisStatus = $"Click the first node or work-plane point for a {(truss ? "truss" : "frame")}."; }
+    public void HandlePointPlaced(Point3DValue point)
+    {
+        var doc = _documents.Current ?? CreateDocument();
+        var snapped = _snapper.Snap(doc, point);
+        if (_pendingMemberStart is null)
+        {
+            var id = snapped.EndpointNodeId ?? Guid.NewGuid();
+            if (snapped.EndpointNodeId is null)
+                ApplyEdit("Place member start", value => _physical.AddNode(value, $"N{doc.Model.Nodes.Count + 1}", snapped.Position, id));
+            _pendingMemberStart = id; AnalysisStatus = "Start placed. Click the second point."; return;
+        }
+        var endId = snapped.EndpointNodeId ?? Guid.NewGuid();
+        ApplyEdit("Place member", value => { var withEnd = snapped.EndpointNodeId is null ? _physical.AddNode(value, $"N{value.Model.Nodes.Count + 1}", snapped.Position, endId) : value; var prepared = EnsureStarterProperties(withEnd); var nodes = prepared.Model.Nodes; return _physical.AddFrame(prepared, _pendingTruss ? $"T{prepared.Model.LineObjects.Count + 1}" : $"F{prepared.Model.LineObjects.Count + 1}", _pendingMemberStart.Value, endId, prepared.Model.Materials[0].Id, prepared.Model.Sections[0].Id, _pendingTruss); });
+        _pendingMemberStart = null; AnalysisStatus = $"{(_pendingTruss ? "Truss" : "Frame")} placed ({snapped.Kind.ToString().ToLowerInvariant()} snap).";
+    }
+    private void AddNodeAt(Point3DValue position, PhysicalSnapKind kind) { var doc = _documents.Current ?? CreateDocument(); int count = doc.Model.Nodes.Count; ApplyEdit("Add node", value => _physical.AddNode(value, $"N{count + 1}", position)); AnalysisStatus = $"Add node ({kind.ToString().ToLowerInvariant()} snap)"; }
     public void AddMember(bool truss) { var doc = _documents.Current ?? CreateDocument(); if (doc.Model.Nodes.Count < 2) { AnalysisStatus = "Add at least two nodes before creating a member."; return; } ApplyEdit(truss ? "Add truss" : "Add frame", value => { var prepared = EnsureStarterProperties(value); var nodes = prepared.Model.Nodes; return _physical.AddFrame(prepared, truss ? $"T{prepared.Model.LineObjects.Count + 1}" : $"F{prepared.Model.LineObjects.Count + 1}", nodes[^2].Id, nodes[^1].Id, prepared.Model.Materials[0].Id, prepared.Model.Sections[0].Id, truss); }); }
     public void SetView(string view) { if (_documents.Current is { } doc) _documents.Replace(doc with { PresentationSettings = doc.PresentationSettings with { ActiveView = view } }); AnalysisStatus = $"View: {view}"; }
     public void IncreaseLabelScale() { if (_documents.Current is { } doc) { var next = doc.PresentationSettings.LabelScale >= 2 ? 1 : doc.PresentationSettings.LabelScale + .25; _documents.Replace(doc with { PresentationSettings = doc.PresentationSettings with { LabelScale = next } }); AnalysisStatus = $"Label scale: {next:0.00}x"; } }

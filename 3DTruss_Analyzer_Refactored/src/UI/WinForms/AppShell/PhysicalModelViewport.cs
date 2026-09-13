@@ -30,6 +30,7 @@ public sealed class PhysicalModelViewport : UserControl
     public event EventHandler<Guid>? ObjectSelected;
     public event EventHandler<Point3DValue>? PointPlaced;
     public PlacementMode PlacementMode { get; set; }
+    public bool ShowLabels { get; set; } = true;
 
     public PhysicalModelViewport()
     {
@@ -61,6 +62,7 @@ public sealed class PhysicalModelViewport : UserControl
         }
 
         var nodes = _document.Model.Nodes.ToDictionary(node => node.Id);
+        var renderLabels = ShowLabels && _document.Model.Nodes.Count <= 2000;
         var (center, span) = GetBounds(_document.Model.Nodes);
         _modelCenter = center; _modelSpan = span; _workPlaneZ = center.Z;
         _scene.Children.Add(new GridLinesVisual3D { Center = new(center.X, center.Y, 0), Width = span * 1.8, Length = span * 1.8, MajorDistance = 1, MinorDistance = 1, Thickness = .01, Fill = Brushes.LightSteelBlue });
@@ -71,16 +73,16 @@ public sealed class PhysicalModelViewport : UserControl
             var selected = line.Id == _selectedId;
             var pipe = new PipeVisual3D { Point1 = ToMedia(start.Position), Point2 = ToMedia(end.Position), Diameter = selected ? Math.Max(.08, span * .012) : Math.Max(.05, span * .008), Fill = GetLineBrush(line.Id) };
             AddSelectable(pipe, line.Id);
-            AddText(line.Label, Mid(start.Position, end.Position), Brushes.SlateGray);
+            if (renderLabels) AddText(line.Label, Mid(start.Position, end.Position), Brushes.SlateGray);
         }
         foreach (var node in _document.Model.Nodes)
         {
             var selected = node.Id == _selectedId;
             var sphere = new SphereVisual3D { Center = ToMedia(node.Position), Radius = selected ? Math.Max(.12, span * .018) : Math.Max(.08, span * .012), Fill = selected ? Brushes.Gold : Brushes.MidnightBlue };
             AddSelectable(sphere, node.Id);
-            AddText(node.Label, new(node.Position.X, node.Position.Y, node.Position.Z + Math.Max(.12, span * .018)), selected ? Brushes.DarkGoldenrod : Brushes.Black);
+            if (renderLabels) AddText(node.Label, new(node.Position.X, node.Position.Y, node.Position.Z + Math.Max(.12, span * .018)), selected ? Brushes.DarkGoldenrod : Brushes.Black);
         }
-        AddText("Z-UP · physical model · click node/member to select", new(center.X - span * .55, center.Y - span * .55, center.Z + span * .55), Brushes.DimGray);
+        if (renderLabels) AddText("Z-UP · physical model · click node/member to select", new(center.X - span * .55, center.Y - span * .55, center.Z + span * .55), Brushes.DimGray);
     }
 
     private void AddAxes(double span)

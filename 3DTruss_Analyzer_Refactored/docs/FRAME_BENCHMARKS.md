@@ -24,5 +24,8 @@ This document defines the repeatable comparison workflow for the native linear f
 ## Current Limits
 
 - No ETABS, STAAD, or OpenSees executable is invoked by this repository, so external comparisons remain manual validation records.
+- `OpenSeesTclExporter` emits a deterministic OpenSees Tcl benchmark contract (SI units, 3D nodes,
+  supports, elastic frame/truss elements, and nodal load pattern). A reviewer can run this text with
+  OpenSees/OpenSeesPy and attach the response record to the Milestone G approval table.
 - Rigid ends and insertion points use a linear kinematic connection-offset transformation. They do not model panel-zone deformation, nonlinear joint behavior, or automatic offset rules.
 - Temperature load is uniform axial member temperature only. Gradients, curvature, staged temperature, and thermal restraint by soil/foundation are unsupported.

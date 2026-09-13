@@ -38,3 +38,15 @@ reporting, or Python/qualification approval and does not close the role-specific
 - Milestone C `.gosa` packaging, atomic save, backup, autosave/recovery, C# legacy/schema-v2 migration, CLI,
   and golden fixtures are implemented. Python and Warehouse3D adapters remain blocked pending their versioned
   source schemas and golden fixtures.
+
+## Milestone G — Qualified Linear 3D Analysis
+
+| Role | Scope | Decision | Reviewer | Date | Evidence |
+| --- | --- | --- | --- | --- | --- |
+| Analysis owner | Model3D boundary, solver diagnostics, residual/equilibrium semantics | Pending |  |  | `ProjectAnalysisService`, automated tests |
+| Independent solver reviewer | OpenSees comparison contract and benchmark results | Pending |  |  | `OpenSeesTclExporter`, `docs/FRAME_BENCHMARKS.md` |
+| Performance reviewer | Dense/sparse equivalence and large-model runtime/memory | Pending |  |  | `MilestoneGQualificationTests` |
+| Engineering approver | Release qualification and supported-feature scope | Pending |  |  | Milestone G qualification package |
+
+Named reviewer, date, decision, and external comparison evidence are required before this milestone can
+be marked qualified. The repository does not invent or substitute those approvals.

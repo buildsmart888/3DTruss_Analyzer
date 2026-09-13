@@ -4,6 +4,7 @@ using System;
 using System.Globalization;
 using System.IO;
 using System.Text.Json;
+using System.Drawing.Imaging;
 using System.Windows.Forms;
 using TrussAnalyzer.Core;
 using TrussAnalyzer.Core.IO;
@@ -1394,13 +1395,17 @@ public partial class MainForm : Form
         
         var dlg = new SaveFileDialog
         {
-            Filter = "Text File|*.txt|CSV File|*.csv|PDF File|*.pdf|JSON File|*.json",
+            Filter = "Text File|*.txt|CSV File|*.csv|PDF File|*.pdf|JSON File|*.json|PNG Image|*.png",
             Title = "Export Analysis Report"
         };
         
         if (dlg.ShowDialog() == DialogResult.OK)
         {
-            if (_structuralResult != null && dlg.FilterIndex == 1)
+            if (dlg.FilterIndex == 5)
+            {
+                ExportViewportImage(dlg.FileName);
+            }
+            else if (_structuralResult != null && dlg.FilterIndex == 1)
             {
                 ExportStructuralResult(dlg.FileName, _structuralResult, _structuralModel);
             }
@@ -1423,6 +1428,15 @@ public partial class MainForm : Form
             }
             MessageBox.Show($"Report exported to {dlg.FileName}", "Success");
         }
+    }
+
+    private void ExportViewportImage(string filePath)
+    {
+        if (glView == null || glView.ClientSize.Width <= 0 || glView.ClientSize.Height <= 0)
+            throw new InvalidOperationException("The structural viewport is not ready for image export.");
+        using var bitmap = new Bitmap(glView.ClientSize.Width, glView.ClientSize.Height);
+        glView.DrawToBitmap(bitmap, glView.ClientRectangle);
+        bitmap.Save(filePath, ImageFormat.Png);
     }
 
     private static void ExportStructuralResult(string filePath, StructuralAnalysisResult result, StructuralModel? model)

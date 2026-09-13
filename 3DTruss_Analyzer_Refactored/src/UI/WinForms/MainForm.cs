@@ -3,6 +3,7 @@ namespace TrussAnalyzer.UI.WinForms;
 using System;
 using System.Globalization;
 using System.IO;
+using System.Text.Json;
 using System.Windows.Forms;
 using TrussAnalyzer.Core;
 using TrussAnalyzer.Core.IO;
@@ -1393,13 +1394,13 @@ public partial class MainForm : Form
         
         var dlg = new SaveFileDialog
         {
-            Filter = "Text File|*.txt|CSV File|*.csv|PDF File|*.pdf",
+            Filter = "Text File|*.txt|CSV File|*.csv|PDF File|*.pdf|JSON File|*.json",
             Title = "Export Analysis Report"
         };
         
         if (dlg.ShowDialog() == DialogResult.OK)
         {
-            if (_structuralResult != null)
+            if (_structuralResult != null && dlg.FilterIndex == 1)
             {
                 ExportStructuralResult(dlg.FileName, _structuralResult, _structuralModel);
             }
@@ -1411,6 +1412,10 @@ public partial class MainForm : Form
             {
                 var pdf = new Core.Reporting.PdfReportGenerator(_solver.LastResult);
                 pdf.SaveToFile(dlg.FileName);
+            }
+            else if (dlg.FilterIndex == 4 && _structuralResult != null)
+            {
+                File.WriteAllText(dlg.FileName, JsonSerializer.Serialize(_structuralResult, new JsonSerializerOptions { WriteIndented = true }));
             }
             else
             {

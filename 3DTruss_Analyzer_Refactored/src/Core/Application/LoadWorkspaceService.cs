@@ -23,6 +23,30 @@ public sealed class LoadWorkspaceService
         return Touch(document with { LoadDefinitions = document.LoadDefinitions with { Assignments = assignments } });
     }
 
+    public IReadOnlyList<LoadOverwriteWarning> GetOverwriteWarnings(ProjectDocument document, LoadAssignment3D generated)
+    {
+        return document.LoadDefinitions.Assignments
+            .Where(existing => existing.Id != generated.Id && existing.LoadPatternId == generated.LoadPatternId && SameTarget(existing, generated) && !IsGenerated(existing))
+            .Select(existing => new LoadOverwriteWarning(existing.Id, existing.Label, generated.Label, "A manual load targets the same object and pattern."))
+            .ToList();
+    }
+
+    public ProjectDocument UpsertGenerated(ProjectDocument document, LoadAssignment3D generated, bool overwriteManual)
+    {
+        var warnings = GetOverwriteWarnings(document, generated);
+        if (warnings.Count > 0 && !overwriteManual) throw new LoadOverwriteRequiredException(warnings);
+        var source = generated.Source with { SourceSystem = string.IsNullOrWhiteSpace(generated.Source.SourceSystem) ? "Generated" : generated.Source.SourceSystem, Notes = "Generated assignment; regeneration may replace this record." };
+        var updated = generated switch
+        {
+            NodalLoadAssignment3D value => UpsertNodal(document, value with { Source = source }),
+            LineLoadAssignment3D value => UpsertLine(document, value with { Source = source }),
+            _ => throw new InvalidOperationException("Generated assignment type is not supported by this workflow.")
+        };
+        if (warnings.Count == 0) return updated;
+        var ids = warnings.Select(warning => warning.ExistingId).ToHashSet();
+        return updated with { LoadDefinitions = updated.LoadDefinitions with { Assignments = updated.LoadDefinitions.Assignments.Where(item => !ids.Contains(item.Id)).ToList() } };
+    }
+
     public ProjectDocument UpsertLine(ProjectDocument document, LineLoadAssignment3D assignment)
     {
         RequirePattern(document, assignment.LoadPatternId); RequireLine(document, assignment.LineObjectId);
@@ -30,6 +54,18 @@ public sealed class LoadWorkspaceService
             throw new ArgumentOutOfRangeException(nameof(assignment), "Line load relative positions must be within [0,1].");
         var assignments = document.LoadDefinitions.Assignments.Where(item => item.Id != assignment.Id).Append(assignment).ToList();
         return Touch(document with { LoadDefinitions = document.LoadDefinitions with { Assignments = assignments } });
+    }
+
+    public ProjectDocument UpdateAssignment(ProjectDocument document, Guid assignmentId, Action<LoadAssignmentEditor> edit)
+    {
+        var existing = document.LoadDefinitions.Assignments.SingleOrDefault(item => item.Id == assignmentId) ?? throw new InvalidOperationException("Load assignment was not found.");
+        var editor = LoadAssignmentEditor.From(existing); edit(editor);
+        return editor.Build(existing) switch
+        {
+            NodalLoadAssignment3D nodal => UpsertNodal(document, nodal),
+            LineLoadAssignment3D line => UpsertLine(document, line),
+            _ => throw new InvalidOperationException("This assignment type is read-only in the current property editor.")
+        };
     }
 
     public ProjectDocument UpsertCombination(ProjectDocument document, LoadCombination3D combination)
@@ -75,7 +111,33 @@ public sealed class LoadWorkspaceService
     private static void RequirePattern(ProjectDocument document, Guid id) { if (!document.LoadDefinitions.LoadPatterns.Any(pattern => pattern.Id == id)) throw new InvalidOperationException("Load pattern was not found."); }
     private static void RequireNode(ProjectDocument document, Guid id) { if (!document.Model.Nodes.Any(node => node.Id == id)) throw new InvalidOperationException("Load node was not found."); }
     private static void RequireLine(ProjectDocument document, Guid id) { if (!document.Model.LineObjects.Any(line => line.Id == id)) throw new InvalidOperationException("Load member was not found."); }
+    private static bool SameTarget(LoadAssignment3D left, LoadAssignment3D right) => (left, right) switch { (NodalLoadAssignment3D a, NodalLoadAssignment3D b) => a.NodeId == b.NodeId, (LineLoadAssignment3D a, LineLoadAssignment3D b) => a.LineObjectId == b.LineObjectId, (LinePointLoadAssignment3D a, LinePointLoadAssignment3D b) => a.LineObjectId == b.LineObjectId && Math.Abs(a.RelativePosition - b.RelativePosition) < 1e-9, _ => false };
+    private static bool IsGenerated(LoadAssignment3D assignment) => assignment.Source.SourceSystem.Contains("Generated", StringComparison.OrdinalIgnoreCase) || assignment.Source.SourceSystem.Contains("Floor", StringComparison.OrdinalIgnoreCase);
     private static ProjectDocument Touch(ProjectDocument document) => document with { AuditMetadata = document.AuditMetadata with { ModifiedUtc = DateTimeOffset.UtcNow } };
 }
 
 public sealed record LoadAssignmentLedgerEntry(Guid Id, string Label, string Pattern, string TargetKind, Guid TargetId, string Value, string Source, string Units);
+public sealed record LoadOverwriteWarning(Guid ExistingId, string ExistingLabel, string GeneratedLabel, string Message);
+public sealed class LoadOverwriteRequiredException : InvalidOperationException
+{
+    public IReadOnlyList<LoadOverwriteWarning> Warnings { get; }
+    public LoadOverwriteRequiredException(IReadOnlyList<LoadOverwriteWarning> warnings) : base("Generated load would overwrite manual assignments; explicit confirmation is required.") => Warnings = warnings;
+}
+
+public sealed class LoadAssignmentEditor
+{
+    public string Label { get; set; } = string.Empty; public double X { get; set; } public double Y { get; set; } public double Z { get; set; } public double MX { get; set; } public double MY { get; set; } public double MZ { get; set; } public double Start { get; set; } public double End { get; set; } = 1;
+    
+    public static LoadAssignmentEditor From(LoadAssignment3D assignment) => assignment switch
+    {
+        NodalLoadAssignment3D nodal => new() { Label = nodal.Label, X = nodal.Force.X, Y = nodal.Force.Y, Z = nodal.Force.Z, MX = nodal.Moment.X, MY = nodal.Moment.Y, MZ = nodal.Moment.Z },
+        LineLoadAssignment3D line => new() { Label = line.Label, X = line.ForcePerLength.X, Y = line.ForcePerLength.Y, Z = line.ForcePerLength.Z, Start = line.StartRelativePosition, End = line.EndRelativePosition },
+        _ => throw new InvalidOperationException("Assignment type is not editable by this property editor.")
+    };
+    internal LoadAssignment3D Build(LoadAssignment3D source) => source switch
+    {
+        NodalLoadAssignment3D nodal => nodal with { Label = Label, Force = new(X, Y, Z), Moment = new(MX, MY, MZ) },
+        LineLoadAssignment3D line => line with { Label = Label, ForcePerLength = new(X, Y, Z), StartRelativePosition = Start, EndRelativePosition = End },
+        _ => throw new InvalidOperationException("Assignment type is not editable by this property editor.")
+    };
+}

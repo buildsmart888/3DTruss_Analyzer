@@ -1544,6 +1544,10 @@ public partial class MainForm : Form
         if (dgvNodes == null) return;
         int nextId = GetNextGridId(dgvNodes);
         dgvNodes.Rows.Add(nextId, 0, 0, 0, false, false, false, false, false, false, 0, 0, 0, 0, 0, 0);
+        _structuralModel = BuildStructuralModelFromGrids();
+        SyncProjectDocument(_structuralModel, _projectDocument?.ProjectInfo.Name ?? "Untitled Project");
+        PopulateObjectTree();
+        glView?.SetModel(_structuralModel, _structuralResult);
         UpdateStatus($"Added node {nextId}. Edit coordinates and constraints in the grid.");
     }
     
@@ -1560,6 +1564,10 @@ public partial class MainForm : Form
         int startNode = nodeRows.Count > 0 ? Convert.ToInt32(nodeRows[0].Cells["Id"].Value, CultureInfo.InvariantCulture) : 1;
         int endNode = nodeRows.Count > 1 ? Convert.ToInt32(nodeRows[1].Cells["Id"].Value, CultureInfo.InvariantCulture) : startNode;
         dgvElements.Rows.Add(nextId, type.ToString(), 1, 1, startNode, endNode, 0.001, 1e-6, 1e-6, 5e-7, 200e9, 7850, MaterialType.Steel.ToString(), 250e6, 0, false, false, false, false);
+        _structuralModel = BuildStructuralModelFromGrids();
+        SyncProjectDocument(_structuralModel, _projectDocument?.ProjectInfo.Name ?? "Untitled Project");
+        PopulateObjectTree();
+        glView?.SetModel(_structuralModel, _structuralResult);
         SelectGridRow(new SelectedModelObject { Type = SelectedModelObjectType.Element, Id = nextId, Name = $"Element {nextId}" });
         UpdateStatus($"Added {type} element {nextId}. Edit connectivity and properties in the grid.");
     }

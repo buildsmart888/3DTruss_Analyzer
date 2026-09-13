@@ -491,6 +491,11 @@ Create traceable physical loads, Thai templates, and combinations without embedd
 
 ## Milestone G - Qualified Linear 3D Analysis
 
+Status: In progress. The Model3D application boundary now supports batch analysis with cancellable
+progress, combination preflight validation, and diagnostic-rich immutable snapshots. Automated native
+qualification currently passes 214 tests; external OpenSeesPy comparison, sparse/dense performance
+evidence, and named engineering review remain release-gate work.
+
 ### Goal
 
 Connect Model3D to a validated first-order Frame-Truss solver through a stable application boundary.

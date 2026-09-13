@@ -61,6 +61,21 @@ public sealed class MilestoneDApplicationTests
         var snapshot = Assert.IsType<AnalysisSnapshot>(successful.Snapshot);
         Assert.True(snapshot.Diagnostics.TotalDof > 0);
         Assert.Equal(snapshot.Diagnostics.EquilibriumResidualMagnitude, snapshot.Equilibrium.ResidualMagnitude);
+        Assert.Contains("Document checksum:", snapshot.ToDiagnosticText());
+    }
+
+    [Fact]
+    public void ProjectAnalysisService_AnalyzeAllReportsProgressAndHonorsCancellation()
+    {
+        var converted = new StructuralModelModel3DAdapter().ToProjectDocument(CreateStableTruss());
+        var progressValues = new List<double>();
+        var results = new ProjectAnalysisService().AnalyzeAll(converted.Document, progress: new Progress<double>(progressValues.Add));
+
+        Assert.NotEmpty(results);
+        Assert.Equal(1d, progressValues[^1]);
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        Assert.Throws<OperationCanceledException>(() => new ProjectAnalysisService().AnalyzeAll(converted.Document, cancellation.Token));
     }
 
     [Fact]

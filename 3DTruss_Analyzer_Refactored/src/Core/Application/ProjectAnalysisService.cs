@@ -33,6 +33,16 @@ public sealed record AnalysisSnapshot
     public IReadOnlyList<AnalysisSnapshotNode> Nodes { get; init; } = Array.Empty<AnalysisSnapshotNode>();
     public IReadOnlyList<AnalysisSnapshotMember> Members { get; init; } = Array.Empty<AnalysisSnapshotMember>();
     public EquilibriumCheck Equilibrium { get; init; } = new(0, 0, 0, 1e-6);
+
+    public string ToDiagnosticText() => string.Join(Environment.NewLine,
+        $"Snapshot: {SnapshotId}", $"Document checksum: {DocumentChecksum}",
+        $"Selection: {SelectionKind} {SelectionId}", $"Created UTC: {CreatedUtc:O}",
+        $"Solver: {SolverName} {SolverVersion}", $"DOF: {Diagnostics.TotalDof} (constrained {Diagnostics.ConstrainedDof})",
+        $"Elements: {Diagnostics.ElementCount}", $"Matrix density: {Diagnostics.MatrixDensity:R}",
+        $"Applied load magnitude: {Diagnostics.AppliedLoadMagnitude:R}", $"Reaction magnitude: {Diagnostics.ReactionMagnitude:R}",
+        $"Equilibrium residual: {Diagnostics.EquilibriumResidualMagnitude:R}", $"Max displacement: {MaxDisplacement:R}",
+        $"Max utilization: {MaxUtilization:R}", $"Equilibrium satisfied: {Equilibrium.IsSatisfied}",
+        Warnings.Count == 0 ? "Warnings: none" : "Warnings:" + Environment.NewLine + string.Join(Environment.NewLine, Warnings.Select(w => "- " + w)));
 }
 
 public sealed record ProjectAnalysisResult(IReadOnlyList<AnalysisPreflightMessage> Preflight, AnalysisSnapshot? Snapshot)
@@ -92,7 +102,7 @@ public sealed class ProjectAnalysisService
     }
 
     /// <summary>Runs every declared load pattern and combination independently, preserving each snapshot identity.</summary>
-    public IReadOnlyList<ProjectAnalysisResult> AnalyzeAll(ProjectDocument document)
+    public IReadOnlyList<ProjectAnalysisResult> AnalyzeAll(ProjectDocument document, CancellationToken cancellationToken = default, IProgress<double>? progress = null)
     {
         ArgumentNullException.ThrowIfNull(document);
         var requests = document.LoadDefinitions.LoadPatterns.Select(pattern =>
@@ -100,7 +110,14 @@ public sealed class ProjectAnalysisService
             .Concat(document.LoadDefinitions.LoadCombinations.Select(combination =>
                 new ProjectAnalysisRequest(ProjectAnalysisSelectionKind.LoadCombination, combination.Id)))
             .ToArray();
-        return requests.Select(request => Analyze(document, request)).ToArray();
+        var results = new List<ProjectAnalysisResult>(requests.Length);
+        for (int index = 0; index < requests.Length; index++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            results.Add(Analyze(document, requests[index]));
+            progress?.Report((index + 1d) / requests.Length);
+        }
+        return results;
     }
 
     private static IEnumerable<AnalysisPreflightMessage> ValidateRequest(ProjectDocument document, ProjectAnalysisRequest request)

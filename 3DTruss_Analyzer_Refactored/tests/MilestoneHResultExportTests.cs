@@ -3,6 +3,7 @@ namespace TrussAnalyzer.Tests;
 using TrussAnalyzer.Core.Application;
 using TrussAnalyzer.Core.Domain.V1.Adapters;
 using TrussAnalyzer.Core.Models;
+using System.IO.Compression;
 using Xunit;
 
 public sealed class MilestoneHResultExportTests
@@ -29,5 +30,26 @@ public sealed class MilestoneHResultExportTests
         Assert.Contains("N (N)", csv);
         Assert.Contains(snapshot.DocumentChecksum, csv);
         Assert.Contains(snapshot.DocumentChecksum, json);
+    }
+
+    [Fact]
+    public void XlsxExport_WritesOpenXmlWorkbookWithResultSheet()
+    {
+        using var directory = new TemporaryDirectory();
+        var snapshot = new AnalysisSnapshot { DocumentChecksum = "ABC", SolverName = "Dense" };
+        var path = Path.Combine(directory.Path, "result.xlsx");
+        new AnalysisResultXlsxExporter().Save(snapshot, path);
+        using var archive = ZipFile.OpenRead(path);
+        Assert.Contains(archive.Entries, entry => entry.FullName == "[Content_Types].xml");
+        Assert.Contains(archive.Entries, entry => entry.FullName == "xl/worksheets/sheet1.xml");
+        Assert.Contains("ABC", Read(archive.GetEntry("xl/worksheets/sheet1.xml")!));
+    }
+
+    private static string Read(ZipArchiveEntry entry) { using var reader = new StreamReader(entry.Open()); return reader.ReadToEnd(); }
+    private sealed class TemporaryDirectory : IDisposable
+    {
+        public string Path { get; } = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "GOStructH", Guid.NewGuid().ToString("N"));
+        public TemporaryDirectory() => Directory.CreateDirectory(Path);
+        public void Dispose() { if (Directory.Exists(Path)) Directory.Delete(Path, true); }
     }
 }

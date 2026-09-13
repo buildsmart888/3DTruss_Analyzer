@@ -5,6 +5,12 @@ using TrussAnalyzer.Core.Domain.V1;
 /// <summary>Application boundary for traceable load authoring. UI code does not construct load contracts directly.</summary>
 public sealed class LoadWorkspaceService
 {
+    public static Vector3DValue IntegrateLineLoad(LineLoadAssignment3D assignment, double memberLength)
+    {
+        if (!double.IsFinite(memberLength) || memberLength < 0) throw new ArgumentOutOfRangeException(nameof(memberLength));
+        var end = assignment.EndForcePerLength ?? assignment.ForcePerLength;
+        return new Vector3DValue((assignment.ForcePerLength.X + end.X) * memberLength / 2, (assignment.ForcePerLength.Y + end.Y) * memberLength / 2, (assignment.ForcePerLength.Z + end.Z) * memberLength / 2);
+    }
     public ProjectDocument EnsurePattern(ProjectDocument document, string label, LoadPatternKind kind, double selfWeightMultiplier = 0, Guid? id = null)
     {
         if (string.IsNullOrWhiteSpace(label)) throw new ArgumentException("A load pattern label is required.", nameof(label));

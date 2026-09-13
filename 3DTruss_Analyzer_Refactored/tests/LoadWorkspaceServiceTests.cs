@@ -49,4 +49,12 @@ public sealed class LoadWorkspaceServiceTests
         var updated = Assert.IsType<NodalLoadAssignment3D>(Assert.Single(document.LoadDefinitions.Assignments));
         Assert.Equal("Edited", updated.Label); Assert.Equal(-500, updated.Force.Z);
     }
+
+    [Fact]
+    public void TrapezoidalLineLoadIntegrationMatchesAverageIntensity()
+    {
+        var load = new LineLoadAssignment3D { ForcePerLength = new(0, 0, -2), EndForcePerLength = new(0, 0, -6) };
+        var resultant = LoadWorkspaceService.IntegrateLineLoad(load, 5);
+        Assert.Equal(-20, resultant.Z, precision: 12);
+    }
 }

@@ -445,6 +445,10 @@ Allow engineers to author and inspect a general spatial Frame-Truss model withou
 
 ## Milestone F - Loading And Combination Workspace
 
+Status: In progress. The first loading boundary now provides Model3D load-pattern creation, nodal/member
+assignment upsert, reference validation, partial distributed-load ranges, and an auditable assignment ledger.
+Viewport load glyphs, full combination templates, and validated Thai wind/seismic generators remain next.
+
 ### Goal
 
 Create traceable physical loads, Thai templates, and combinations without embedding factors in UI code.

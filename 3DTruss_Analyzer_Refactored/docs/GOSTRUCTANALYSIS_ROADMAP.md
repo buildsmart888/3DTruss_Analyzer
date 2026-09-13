@@ -540,6 +540,11 @@ Connect Model3D to a validated first-order Frame-Truss solver through a stable a
 
 ## Milestone H - Production Results And Visualization
 
+Status: started. The existing viewer provides deformed shape, reactions, member diagrams, extrema,
+station jumps, display layers, and basic report exports. A shared `AnalysisResultExportService` now
+provides deterministic JSON/CSV formatting with snapshot checksum, units, signs, and station metadata;
+full linked result explorer and XLSX/PDF/image parity remain follow-up work.
+
 ### Goal
 
 Make analysis output inspectable, comparable, and consistent across the UI and exports.

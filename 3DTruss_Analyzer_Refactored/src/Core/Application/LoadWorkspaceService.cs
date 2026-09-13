@@ -127,7 +127,7 @@ public sealed class LoadOverwriteRequiredException : InvalidOperationException
 public sealed class LoadAssignmentEditor
 {
     public string Label { get; set; } = string.Empty; public double X { get; set; } public double Y { get; set; } public double Z { get; set; } public double MX { get; set; } public double MY { get; set; } public double MZ { get; set; } public double Start { get; set; } public double End { get; set; } = 1;
-    
+
     public static LoadAssignmentEditor From(LoadAssignment3D assignment) => assignment switch
     {
         NodalLoadAssignment3D nodal => new() { Label = nodal.Label, X = nodal.Force.X, Y = nodal.Force.Y, Z = nodal.Force.Z, MX = nodal.Moment.X, MY = nodal.Moment.Y, MZ = nodal.Moment.Z },

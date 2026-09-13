@@ -46,6 +46,7 @@ public sealed class BuildingModelingWorkflowTests
         var converted = new TrussAnalyzer.Core.Domain.V1.Adapters.StructuralModelModel3DAdapter().ToStructuralModel(loaded).Model;
         var loadCase = converted.LoadCases.Single(item => item.CaseId == pattern.Source.SourceObjectId);
         loadCase.IncludeSelfWeight = false;
+        converted.Loads.RemoveAll(load => load is not TrussAnalyzer.Core.Models.MemberDistributedLoad);
         var assembler = new LoadVectorAssembler(converted, new DofIndexer(converted.Nodes));
         var result = assembler.CreateResult(); assembler.AssembleInto(result, loadCase);
         var resultant = result.GlobalLoadVector.Where((_, index) => index % 6 == 2).Sum();

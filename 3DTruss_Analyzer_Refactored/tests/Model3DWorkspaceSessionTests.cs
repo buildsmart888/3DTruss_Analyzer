@@ -2,6 +2,7 @@ namespace TrussAnalyzer.Tests;
 
 using TrussAnalyzer.Core.Application;
 using TrussAnalyzer.Core.Domain.V1;
+using TrussAnalyzer.Core.IO.Projects;
 using Xunit;
 
 public sealed class Model3DWorkspaceSessionTests
@@ -50,5 +51,39 @@ public sealed class Model3DWorkspaceSessionTests
         Assert.False(session.Display.ShowLabels);
         Assert.Equal("Plan XY", session.Display.ActiveView);
         Assert.Contains(nodeId, session.Selection);
+    }
+
+    [Theory]
+    [InlineData(3)]
+    [InlineData(100)]
+    [InlineData(1000)]
+    public void BrowserRemainsCompleteAcrossSmallMediumAndLargeModels(int nodeCount)
+    {
+        var nodes = Enumerable.Range(0, nodeCount).Select(index => new Node3D
+        {
+            Id = Guid.NewGuid(), Label = $"N{index + 1}", Position = new(index, 0, 0)
+        }).ToList();
+        var session = new Model3DWorkspaceSession(new ProjectDocument { Model = new Model3D { Nodes = nodes } });
+
+        Assert.Equal(nodeCount, session.BrowserItems().Count(item => item.Kind == "Node"));
+        Assert.Equal(nodes.Select(node => node.Id).ToHashSet(), session.BrowserItems().Where(item => item.Kind == "Node").Select(item => item.Id).ToHashSet());
+    }
+
+    [Fact]
+    public void GosaRoundTripPreservesWorkspaceObjectIds()
+    {
+        var nodeId = Guid.Parse("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        var document = new ProjectDocument { Model = new Model3D { Nodes = new() { new Node3D { Id = nodeId, Label = "N1", Position = new(1, 2, 3) } } } };
+        var path = Path.Combine(Path.GetTempPath(), $"gostruct-{Guid.NewGuid():N}.gosa");
+        try
+        {
+            var store = new GosaProjectStore();
+            store.SaveAtomic(path, document);
+            Assert.Equal(nodeId, store.Load(path).Model.Nodes.Single().Id);
+        }
+        finally
+        {
+            if (File.Exists(path)) File.Delete(path);
+        }
     }
 }

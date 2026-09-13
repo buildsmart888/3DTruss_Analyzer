@@ -76,6 +76,22 @@ public class Model3DAdapterTests
     }
 
     [Fact]
+    public void StructuralModelRoundTrip_PreservesMemberPointLoadAndSolverParity()
+    {
+        var source = CreateFixedFixedFrameModel();
+        source.Loads.Add(new MemberPointLoad { LoadCaseId = "UDL", ElementId = 1, RelativeDistance = .35, Force = new Vector3D(0, -750, 0), Moment = new Vector3D(0, 0, 25) });
+        var adapter = new StructuralModelModel3DAdapter();
+        var converted = adapter.ToStructuralModel(adapter.ToProjectDocument(source).Document).Model;
+        var imported = Assert.Single(converted.Loads.OfType<MemberPointLoad>());
+
+        Assert.Equal(.35, imported.RelativeDistance, precision: 12);
+        Assert.Equal(-750, imported.Force.Y, precision: 12);
+        var expected = new StructuralSolver(source).Analyze("UDL");
+        var actual = new StructuralSolver(converted).Analyze("UDL");
+        Assert.Equal(expected.NodeResults.Single(node => node.NodeId == 1).ReactionForce.Y, actual.NodeResults.Single(node => node.NodeId == 1).ReactionForce.Y, precision: 7);
+    }
+
+    [Fact]
     public void StructuralModelExport_ReportsEveryKnownLossyConversion()
     {
         var source = CreateAxialFrameModel();

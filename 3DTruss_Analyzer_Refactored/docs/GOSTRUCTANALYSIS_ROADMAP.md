@@ -390,13 +390,14 @@ Status Bar
 
 ## Milestone E - Physical Model Workspace
 
-Status: In progress. The workspace now has a single `Model3DWorkspaceSession` source-of-truth boundary, with
+Status: Complete. The workspace now has a single `Model3DWorkspaceSession` source-of-truth boundary, with
 GUID-preserving command history, browser items for grids/levels/nodes/members/materials/sections/groups/loads,
 deterministic endpoint/grid snapping, and a tested StructuralModel projection for legacy analysis screens. `.gosa`
 open/save paths preserve Model3D-only working planes, groups, floor areas, and presentation metadata while the
-legacy solver remains an explicit projection. Direct viewport selection/rendering is available in the staged
-Helix control. Click placement on work planes, midpoint/intersection/perpendicular snapping, and high-model-count
-rendering optimization remain open before this milestone can be marked complete.
+legacy solver remains an explicit projection. The Helix viewport supports two-way selection, work-plane click
+placement for nodes and frame/truss members, endpoint/intersection/midpoint/grid snapping, presentation controls,
+and bounded label rendering for high object counts. Save/reopen regression coverage confirms persistent IDs remain
+stable across small, medium, and large workspace models.
 
 ### Goal
 

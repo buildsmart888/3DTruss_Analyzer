@@ -315,10 +315,14 @@ public sealed class StructuralModelModel3DAdapter
                     document.LoadDefinitions.Assignments.Add(new LineLoadAssignment3D { Id = assignmentId, Label = $"Distributed {distributed.ElementId}", LoadPatternId = patternId, LineObjectId = lines[distributed.ElementId], Basis = IsLocal(distributed.Direction) ? LoadCoordinateBasis.Local : LoadCoordinateBasis.Global, ForcePerLength = ToVector(distributed.ForcePerLength), StartRelativePosition = distributed.StartRelativeDistance, EndRelativePosition = distributed.EndRelativeDistance });
                     break;
                 case MemberPointLoad point:
-                    Warn(diagnostics, "SM2M3-POINT-LOAD", $"Member point load on element {point.ElementId} was not transferred because Model3D V1 currently defines nodal and distributed-line assignments only.");
+                    if (lines.TryGetValue(point.ElementId, out var pointLine))
+                        document.LoadDefinitions.Assignments.Add(new LinePointLoadAssignment3D { Id = assignmentId, Label = $"Point {point.ElementId}", LoadPatternId = patternId, LineObjectId = pointLine, RelativePosition = point.RelativeDistance, Basis = IsLocal(point.Direction) ? LoadCoordinateBasis.Local : LoadCoordinateBasis.Global, Force = ToVector(point.Force), Moment = ToVector(point.Moment) });
+                    Warn(diagnostics, "SM2M3-POINT-LOAD", $"Member point load on element {point.ElementId} was transferred to a Model3D line-point assignment.");
                     break;
                 case MemberTemperatureLoad temperature:
-                    Warn(diagnostics, "SM2M3-TEMPERATURE", $"Temperature load on element {temperature.ElementId} was not transferred because Model3D V1 load assignment semantics do not yet include it.");
+                    if (lines.TryGetValue(temperature.ElementId, out var temperatureLine))
+                        document.LoadDefinitions.Assignments.Add(new TemperatureLoadAssignment3D { Id = assignmentId, Label = $"Temperature {temperature.ElementId}", LoadPatternId = patternId, LineObjectId = temperatureLine, TemperatureChange = temperature.TemperatureChange, ThermalExpansionCoefficient = temperature.ThermalExpansionCoefficient });
+                    Warn(diagnostics, "SM2M3-TEMPERATURE", $"Temperature load on element {temperature.ElementId} was transferred to a Model3D temperature assignment.");
                     break;
             }
         }
@@ -368,6 +372,20 @@ public sealed class StructuralModelModel3DAdapter
                     break;
                 case LineLoadAssignment3D line:
                     target.Loads.Add(new MemberDistributedLoad { LoadCaseId = caseId, ElementId = lines[line.LineObjectId], ForcePerLength = ToVector(line.ForcePerLength), Direction = line.Basis == LoadCoordinateBasis.Local ? LoadDirection.LocalX : LoadDirection.GlobalX, StartRelativeDistance = line.StartRelativePosition, EndRelativeDistance = line.EndRelativePosition });
+                    break;
+                case LinePointLoadAssignment3D point:
+                    target.Loads.Add(new MemberPointLoad { LoadCaseId = caseId, ElementId = lines[point.LineObjectId], RelativeDistance = point.RelativePosition, Force = ToVector(point.Force), Moment = ToVector(point.Moment), Direction = point.Basis == LoadCoordinateBasis.Local ? LoadDirection.LocalX : LoadDirection.GlobalX });
+                    break;
+                case TemperatureLoadAssignment3D temperature:
+                    target.Loads.Add(new MemberTemperatureLoad { LoadCaseId = caseId, ElementId = lines[temperature.LineObjectId], TemperatureChange = temperature.TemperatureChange, ThermalExpansionCoefficient = temperature.ThermalExpansionCoefficient });
+                    break;
+                case PrescribedMovementAssignment3D movement:
+                    if (nodes.TryGetValue(movement.NodeId, out var movementNode))
+                    {
+                        var node = target.Nodes.Single(value => value.Id == movementNode);
+                        node.SetPrescribedDisplacement(movement.Movement.UX, movement.Movement.UY, movement.Movement.UZ);
+                        node.SetPrescribedRotation(movement.Movement.RX, movement.Movement.RY, movement.Movement.RZ);
+                    }
                     break;
             }
         }

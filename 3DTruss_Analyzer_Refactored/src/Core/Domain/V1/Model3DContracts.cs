@@ -119,6 +119,7 @@ public sealed record Model3D
     public List<Level3D> Levels { get; init; } = new();
     public List<GridLine3D> Grids { get; init; } = new();
     public List<ModelGroup3D> Groups { get; init; } = new();
+    public List<WorkingPlane3D> WorkingPlanes { get; init; } = new();
 }
 
 public sealed record Node3D : IPersistentModelObject
@@ -251,6 +252,15 @@ public sealed record ModelGroup3D : IPersistentModelObject
     public List<Guid> ObjectIds { get; init; } = new();
 }
 
+public sealed record WorkingPlane3D : IPersistentModelObject
+{
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public string Label { get; init; } = string.Empty;
+    public Point3DValue Origin { get; init; }
+    public Vector3DValue Normal { get; init; } = new(0, 0, 1);
+    public Vector3DValue XAxis { get; init; } = new(1, 0, 0);
+}
+
 public enum AreaAnalysisBehavior { StorageOnly }
 
 public sealed record AreaObject3D : IPersistentModelObject
@@ -290,6 +300,21 @@ public sealed record LoadDefinitions
     public List<LoadAssignment3D> Assignments { get; init; } = new();
     public MassSource3D MassSource { get; init; } = new();
     public List<LoadCombination3D> LoadCombinations { get; init; } = new();
+    public List<FloorLoadArea3D> FloorAreas { get; init; } = new();
+}
+
+public sealed record FloorLoadArea3D : IPersistentModelObject
+{
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public string Label { get; init; } = string.Empty;
+    public Guid LoadPatternId { get; init; }
+    public double XMin { get; init; }
+    public double XMax { get; init; }
+    public double YMin { get; init; }
+    public double YMax { get; init; }
+    public double Elevation { get; init; }
+    public double Pressure { get; init; }
+    public SourceMetadata Source { get; init; } = new();
 }
 
 public sealed record LoadPattern3D : IPersistentModelObject
@@ -304,6 +329,9 @@ public sealed record LoadPattern3D : IPersistentModelObject
 [JsonPolymorphic(TypeDiscriminatorPropertyName = "assignmentType")]
 [JsonDerivedType(typeof(NodalLoadAssignment3D), "nodal")]
 [JsonDerivedType(typeof(LineLoadAssignment3D), "line")]
+[JsonDerivedType(typeof(LinePointLoadAssignment3D), "linePoint")]
+[JsonDerivedType(typeof(TemperatureLoadAssignment3D), "temperature")]
+[JsonDerivedType(typeof(PrescribedMovementAssignment3D), "prescribedMovement")]
 public abstract record LoadAssignment3D : IPersistentModelObject
 {
     public Guid Id { get; init; } = Guid.NewGuid();
@@ -328,6 +356,28 @@ public sealed record LineLoadAssignment3D : LoadAssignment3D
     public Vector3DValue ForcePerLength { get; init; }
     public double StartRelativePosition { get; init; }
     public double EndRelativePosition { get; init; } = 1;
+}
+
+public sealed record LinePointLoadAssignment3D : LoadAssignment3D
+{
+    public Guid LineObjectId { get; init; }
+    public LoadCoordinateBasis Basis { get; init; }
+    public double RelativePosition { get; init; } = .5;
+    public Vector3DValue Force { get; init; }
+    public Vector3DValue Moment { get; init; }
+}
+
+public sealed record TemperatureLoadAssignment3D : LoadAssignment3D
+{
+    public Guid LineObjectId { get; init; }
+    public double TemperatureChange { get; init; }
+    public double ThermalExpansionCoefficient { get; init; }
+}
+
+public sealed record PrescribedMovementAssignment3D : LoadAssignment3D
+{
+    public Guid NodeId { get; init; }
+    public DofValues Movement { get; init; } = new();
 }
 
 public sealed record MassSource3D

@@ -49,6 +49,9 @@ public sealed class LoadWorkspaceService
             {
                 NodalLoadAssignment3D nodal => new LoadAssignmentLedgerEntry(assignment.Id, assignment.Label, patterns[assignment.LoadPatternId].Label, "Node", nodal.NodeId, $"F=({nodal.Force.X:G6},{nodal.Force.Y:G6},{nodal.Force.Z:G6}) N; M=({nodal.Moment.X:G6},{nodal.Moment.Y:G6},{nodal.Moment.Z:G6}) N-m", assignment.Source.SourceSystem, "N / N-m"),
                 LineLoadAssignment3D line => new LoadAssignmentLedgerEntry(assignment.Id, assignment.Label, patterns[assignment.LoadPatternId].Label, "Member", line.LineObjectId, $"w=({line.ForcePerLength.X:G6},{line.ForcePerLength.Y:G6},{line.ForcePerLength.Z:G6}) N/m; r={line.StartRelativePosition:G4}..{line.EndRelativePosition:G4}", assignment.Source.SourceSystem, "N/m"),
+                LinePointLoadAssignment3D point => new LoadAssignmentLedgerEntry(assignment.Id, assignment.Label, patterns[assignment.LoadPatternId].Label, "Member point", point.LineObjectId, $"r={point.RelativePosition:G4}; F=({point.Force.X:G6},{point.Force.Y:G6},{point.Force.Z:G6}) N", assignment.Source.SourceSystem, "N / N-m"),
+                TemperatureLoadAssignment3D temperature => new LoadAssignmentLedgerEntry(assignment.Id, assignment.Label, patterns[assignment.LoadPatternId].Label, "Member temperature", temperature.LineObjectId, $"ΔT={temperature.TemperatureChange:G6} K", assignment.Source.SourceSystem, "K"),
+                PrescribedMovementAssignment3D movement => new LoadAssignmentLedgerEntry(assignment.Id, assignment.Label, patterns[assignment.LoadPatternId].Label, "Prescribed node", movement.NodeId, $"U=({movement.Movement.UX:G6},{movement.Movement.UY:G6},{movement.Movement.UZ:G6}) m", assignment.Source.SourceSystem, "m / rad"),
                 _ => throw new InvalidOperationException($"Unsupported load assignment {assignment.GetType().Name}.")
             }).ToList();
     }
@@ -62,6 +65,9 @@ public sealed class LoadWorkspaceService
             if (!patternIds.Contains(assignment.LoadPatternId)) issues.Add($"{assignment.Label}: load pattern is missing.");
             if (assignment is NodalLoadAssignment3D node && !document.Model.Nodes.Any(item => item.Id == node.NodeId)) issues.Add($"{assignment.Label}: node is missing.");
             if (assignment is LineLoadAssignment3D line && !document.Model.LineObjects.Any(item => item.Id == line.LineObjectId)) issues.Add($"{assignment.Label}: member is missing.");
+            if (assignment is LinePointLoadAssignment3D point && (!document.Model.LineObjects.Any(item => item.Id == point.LineObjectId) || point.RelativePosition is < 0 or > 1)) issues.Add($"{assignment.Label}: point-load member or position is invalid.");
+            if (assignment is TemperatureLoadAssignment3D temperature && !document.Model.LineObjects.Any(item => item.Id == temperature.LineObjectId)) issues.Add($"{assignment.Label}: temperature member is missing.");
+            if (assignment is PrescribedMovementAssignment3D movement && !document.Model.Nodes.Any(item => item.Id == movement.NodeId)) issues.Add($"{assignment.Label}: prescribed-movement node is missing.");
         }
         return issues;
     }

@@ -23,7 +23,7 @@ public partial class GOStructAnalysisShellWindow : Window
         PhysicalViewport.SetDocument(_vm.CurrentDocument);
         PhysicalViewport.ObjectSelected += (_, id) => { _vm.SelectModelById(id); ModelTree.SelectedItem = _vm.SelectedTreeItem; PhysicalViewport.SelectObject(id); };
         PhysicalViewport.PointPlaced += (_, point) => _vm.HandlePointPlaced(point);
-        _vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ShellViewModel.CurrentDocument)) { PhysicalViewport.SetDocument(_vm.CurrentDocument); UpdateWorkspace(); } if (e.PropertyName == nameof(ShellViewModel.SelectedObjectId)) PhysicalViewport.SelectObject(_vm.SelectedObjectId); if (e.PropertyName == nameof(ShellViewModel.CurrentStage)) UpdateWorkspace(); };
+        _vm.PropertyChanged += (_, e) => { if (e.PropertyName == nameof(ShellViewModel.CurrentDocument)) { PhysicalViewport.SetDocument(_vm.CurrentDocument); UpdateWorkspace(); } if (e.PropertyName == nameof(ShellViewModel.SelectedObjectId)) PhysicalViewport.SelectObject(_vm.SelectedObjectId); if (e.PropertyName == nameof(ShellViewModel.CurrentStage)) UpdateWorkspace(); if (e.PropertyName is nameof(ShellViewModel.ActiveLoadPatternId) or nameof(ShellViewModel.ShowLoads) or nameof(ShellViewModel.LoadScale)) PhysicalViewport.SetLoadDisplay(_vm.ActiveLoadPatternId, _vm.ShowLoads, _vm.LoadScale, true); };
         UpdateWorkspace();
     }
     private void NewRequested(object s, RoutedEventArgs e) => _vm.CreateNew();
@@ -38,6 +38,7 @@ public partial class GOStructAnalysisShellWindow : Window
     private void AddFrameRequested(object s, RoutedEventArgs e) { _vm.BeginMemberPlacement(false); PhysicalViewport.BeginPlacement(PlacementMode.MemberStart); }
     private void AddTrussRequested(object s, RoutedEventArgs e) { _vm.BeginMemberPlacement(true); PhysicalViewport.BeginPlacement(PlacementMode.MemberStart); }
     private void CreateGroupRequested(object s, RoutedEventArgs e) => _vm.CreateGroupFromSelection(); private void ColorGroupRequested(object s, RoutedEventArgs e) => _vm.CycleSelectedGroupColor();
+    private void LoadPatternRequested(object s, RoutedEventArgs e) => _vm.ApplyThaiTemplates(); private void LoadFilterRequested(object s, RoutedEventArgs e) => _vm.CycleLoadPattern(); private void LoadScaleRequested(object s, RoutedEventArgs e) => _vm.IncreaseLoadScale(); private void ToggleLoadsRequested(object s, RoutedEventArgs e) => _vm.ToggleLoads();
     private void IsoRequested(object s, RoutedEventArgs e) => _vm.SetView("Isometric"); private void PlanRequested(object s, RoutedEventArgs e) => _vm.SetView("Plan XY"); private void LabelRequested(object s, RoutedEventArgs e) => _vm.IncreaseLabelScale(); private void TransparencyRequested(object s, RoutedEventArgs e) => _vm.ToggleTransparency(); private void ApplyNodeRequested(object s, RoutedEventArgs e) => _vm.ApplySelectedNode();
     private void ModelSearchChanged(object s, TextChangedEventArgs e) => _vm.FilterModel(((TextBox)s).Text); private void ModelSelectionChanged(object s, SelectionChangedEventArgs e) { var item = e.AddedItems.OfType<PhysicalTreeItem>().FirstOrDefault(); _vm.SelectModel(item); PhysicalViewport.SelectObject(item?.Id); }
     private void RecentProjectSelected(object s, SelectionChangedEventArgs e) { if (e.AddedItems.OfType<string>().FirstOrDefault() is { } path) _vm.Open(path); }
@@ -78,7 +79,15 @@ public sealed class ShellViewModel : INotifyPropertyChanged, IDisposable
     public void Recover(string path) { try { _documents.Recover(path); AddRecent(_documents.CurrentPath!); AnalysisStatus = "Latest valid snapshot recovered"; } catch (Exception ex) { AnalysisStatus = ex.Message; } }
     public void Undo() { if (CanUndo) _history.Undo(); } public void Redo() { if (CanRedo) _history.Redo(); } public void Cancel() => _cts?.Cancel();
     private bool _pendingTruss; private Guid? _pendingMemberStart;
+    private Guid? _activeLoadPatternId; private bool _showLoads = true; private double _loadScale = .001;
+    public Guid? ActiveLoadPatternId { get => _activeLoadPatternId; private set { _activeLoadPatternId = value; OnChanged(); } }
+    public bool ShowLoads { get => _showLoads; private set { _showLoads = value; OnChanged(); } }
+    public double LoadScale { get => _loadScale; private set { _loadScale = value; OnChanged(); } }
     public string AnalysisStatusText { get => AnalysisStatus; set => AnalysisStatus = value; }
+    public void ApplyThaiTemplates() { var doc = _documents.Current ?? CreateDocument(); _documents.Replace(new ThaiModel3DTemplateService().Apply(doc)); Refresh(); AnalysisStatus = "Thai load templates applied (PRELIMINARY)."; }
+    public void CycleLoadPattern() { var patterns = _documents.Current?.LoadDefinitions.LoadPatterns ?? new(); if (patterns.Count == 0) { AnalysisStatus = "No load patterns available."; return; } var index = ActiveLoadPatternId is null ? -1 : patterns.FindIndex(item => item.Id == ActiveLoadPatternId); ActiveLoadPatternId = patterns[(index + 1) % patterns.Count].Id; AnalysisStatus = $"Load filter: {patterns[(index + 1) % patterns.Count].Label}"; }
+    public void IncreaseLoadScale() { LoadScale = LoadScale >= .01 ? .001 : LoadScale * 2; AnalysisStatus = $"Load display scale: {LoadScale:G3}"; }
+    public void ToggleLoads() { ShowLoads = !ShowLoads; AnalysisStatus = ShowLoads ? "Loads visible." : "Loads hidden."; }
     public void AddNode() { var doc = _documents.Current ?? CreateDocument(); int count = doc.Model.Nodes.Count; var snapped = _snapper.Snap(doc, new Point3DValue(count * 3, 0, 0)); AddNodeAt(snapped.Position, snapped.Kind); }
     public void BeginMemberPlacement(bool truss) { _pendingTruss = truss; _pendingMemberStart = null; AnalysisStatus = $"Click the first node or work-plane point for a {(truss ? "truss" : "frame")}."; }
     public void HandlePointPlaced(Point3DValue point)

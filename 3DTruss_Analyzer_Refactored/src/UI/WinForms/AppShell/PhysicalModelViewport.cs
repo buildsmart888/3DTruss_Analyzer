@@ -26,11 +26,20 @@ public sealed class PhysicalModelViewport : UserControl
     private double _workPlaneZ;
     private Point3DValue _modelCenter;
     private double _modelSpan = 10;
+    private Guid? _activeLoadPatternId;
+    private bool _showLoads = true;
+    private bool _showLoadLabels = true;
+    private double _loadScale = .001;
 
     public event EventHandler<Guid>? ObjectSelected;
     public event EventHandler<Point3DValue>? PointPlaced;
     public PlacementMode PlacementMode { get; set; }
     public bool ShowLabels { get; set; } = true;
+
+    public void SetLoadDisplay(Guid? patternId, bool showLoads, double scale, bool showLabels)
+    {
+        _activeLoadPatternId = patternId; _showLoads = showLoads; _loadScale = Math.Max(1e-6, scale); _showLoadLabels = showLabels; Refresh();
+    }
 
     public PhysicalModelViewport()
     {
@@ -82,7 +91,43 @@ public sealed class PhysicalModelViewport : UserControl
             AddSelectable(sphere, node.Id);
             if (renderLabels) AddText(node.Label, new(node.Position.X, node.Position.Y, node.Position.Z + Math.Max(.12, span * .018)), selected ? Brushes.DarkGoldenrod : Brushes.Black);
         }
+        if (_showLoads) RenderLoads(nodes, renderLabels);
         if (renderLabels) AddText("Z-UP · physical model · click node/member to select", new(center.X - span * .55, center.Y - span * .55, center.Z + span * .55), Brushes.DimGray);
+    }
+
+    private void RenderLoads(IReadOnlyDictionary<Guid, Node3D> nodes, bool renderLabels)
+    {
+        var patterns = _document!.LoadDefinitions.LoadPatterns.ToDictionary(pattern => pattern.Id);
+        foreach (var assignment in _document.LoadDefinitions.Assignments.Where(item => _activeLoadPatternId is null || item.LoadPatternId == _activeLoadPatternId))
+        {
+            if (!patterns.ContainsKey(assignment.LoadPatternId)) continue;
+            Point3DValue? origin = null; Vector3DValue vector = new(); string label = assignment.Label;
+            switch (assignment)
+            {
+                case NodalLoadAssignment3D nodal when nodes.TryGetValue(nodal.NodeId, out var node): origin = node.Position; vector = nodal.Force; break;
+                case LineLoadAssignment3D line when TryLineMidpoint(line.LineObjectId, nodes, out var midpoint): origin = midpoint; vector = line.ForcePerLength; break;
+                case LinePointLoadAssignment3D point when TryLinePoint(point.LineObjectId, point.RelativePosition, nodes, out var pointPosition): origin = pointPosition; vector = point.Force; break;
+            }
+            if (origin is null || vector.Magnitude < 1e-9) continue;
+            var scaled = vector.Scale(_loadScale);
+            var tip = new Point3DValue(origin.Value.X + scaled.X, origin.Value.Y + scaled.Y, origin.Value.Z + scaled.Z);
+            _scene.Children.Add(new ArrowVisual3D { Point1 = ToMedia(origin.Value), Point2 = ToMedia(tip), Diameter = Math.Max(.02, _modelSpan * .002), Fill = Brushes.Orange });
+            if (_showLoadLabels && renderLabels) AddText(label, tip, Brushes.DarkOrange);
+        }
+    }
+
+    private bool TryLineMidpoint(Guid lineId, IReadOnlyDictionary<Guid, Node3D> nodes, out Point3DValue point)
+    {
+        var line = _document!.Model.LineObjects.FirstOrDefault(item => item.Id == lineId);
+        if (line is not null && nodes.TryGetValue(line.StartNodeId, out var a) && nodes.TryGetValue(line.EndNodeId, out var b)) { point = Mid(a.Position, b.Position); return true; }
+        point = default; return false;
+    }
+
+    private bool TryLinePoint(Guid lineId, double relative, IReadOnlyDictionary<Guid, Node3D> nodes, out Point3DValue point)
+    {
+        var line = _document!.Model.LineObjects.FirstOrDefault(item => item.Id == lineId);
+        if (line is not null && nodes.TryGetValue(line.StartNodeId, out var a) && nodes.TryGetValue(line.EndNodeId, out var b)) { point = new(a.Position.X + (b.Position.X - a.Position.X) * relative, a.Position.Y + (b.Position.Y - a.Position.Y) * relative, a.Position.Z + (b.Position.Z - a.Position.Z) * relative); return true; }
+        point = default; return false;
     }
 
     private void AddAxes(double span)

@@ -390,12 +390,13 @@ Status Bar
 
 ## Milestone E - Physical Model Workspace
 
-Status: In progress. The first Model3D physical-authoring slice now provides GUID-preserving node/frame/truss/group
-commands, undo/redo integration, a searchable physical object tree, selected-node typed property editing, starter
-material/section defaults, deterministic endpoint/grid snap service, and a direct Model3D Helix viewport with
-tree/viewport/inspector selection synchronization plus presentation-only transparency/group-colour rendering.
-Typed/click-based placement onto viewport work planes, advanced snapping (midpoint/intersection/perpendicular),
-and high-model-count rendering optimization remain open.
+Status: In progress. The workspace now has a single `Model3DWorkspaceSession` source-of-truth boundary, with
+GUID-preserving command history, browser items for grids/levels/nodes/members/materials/sections/groups/loads,
+deterministic endpoint/grid snapping, and a tested StructuralModel projection for legacy analysis screens. `.gosa`
+open/save paths preserve Model3D-only working planes, groups, floor areas, and presentation metadata while the
+legacy solver remains an explicit projection. Direct viewport selection/rendering is available in the staged
+Helix control. Click placement on work planes, midpoint/intersection/perpendicular snapping, and high-model-count
+rendering optimization remain open before this milestone can be marked complete.
 
 ### Goal
 

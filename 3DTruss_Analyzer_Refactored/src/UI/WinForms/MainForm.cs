@@ -6,6 +6,9 @@ using System.IO;
 using System.Windows.Forms;
 using TrussAnalyzer.Core;
 using TrussAnalyzer.Core.IO;
+using TrussAnalyzer.Core.IO.Projects;
+using TrussAnalyzer.Core.Domain.V1;
+using TrussAnalyzer.Core.Domain.V1.Adapters;
 using TrussAnalyzer.Core.Models;
 using TrussAnalyzer.UI.WinForms.Controls;
 
@@ -15,6 +18,8 @@ using TrussAnalyzer.UI.WinForms.Controls;
 /// </summary>
 public partial class MainForm : Form
 {
+    /// <summary>Current Model3D document. The StructuralModel below is rebuilt as an analysis projection.</summary>
+    public ProjectDocument? CurrentProjectDocument => _projectDocument;
     private TrussSolver _solver = new();
     private DataGridView? dgvNodes;
     private DataGridView? dgvElements;
@@ -36,6 +41,12 @@ public partial class MainForm : Form
     private TextBox? txtStatus;
     private StructuralModel? _structuralModel;
     private StructuralAnalysisResult? _structuralResult;
+    private ProjectDocument? _projectDocument;
+    private readonly StructuralModelModel3DAdapter _model3DAdapter = new();
+    private Dictionary<int, Guid> _model3DNodeIds = new();
+    private Dictionary<int, Guid> _model3DLineIds = new();
+    private Dictionary<int, Guid> _model3DMaterialIds = new();
+    private Dictionary<int, Guid> _model3DSectionIds = new();
     private bool _syncingSelection;
     
     public MainForm()
@@ -766,6 +777,7 @@ public partial class MainForm : Form
     {
         _solver = new TrussSolver();
         _structuralModel = null;
+        _model3DNodeIds = new(); _model3DLineIds = new(); _model3DMaterialIds = new(); _model3DSectionIds = new();
         _structuralResult = null;
         
         // Simple tripod example
@@ -805,6 +817,7 @@ public partial class MainForm : Form
     private void LoadFrame3DSample()
     {
         _solver = new TrussSolver();
+        _model3DNodeIds = new(); _model3DLineIds = new(); _model3DMaterialIds = new(); _model3DSectionIds = new();
         _structuralResult = null;
 
         var model = new StructuralModel();
@@ -882,6 +895,8 @@ public partial class MainForm : Form
     private void PopulateGrids()
     {
         if (dgvNodes == null || dgvElements == null) return;
+
+        SyncProjectDocument(StructuralModel.FromTrussSolver(_solver), "Sample tripod");
         
         dgvNodes.Rows.Clear();
         foreach (var node in _solver.GetNodes())
@@ -961,6 +976,7 @@ public partial class MainForm : Form
         try
         {
             _structuralModel = BuildStructuralModelFromGrids();
+            SyncProjectDocument(_structuralModel, _projectDocument?.ProjectInfo.Name ?? "Untitled Project");
             var structuralSolver = new StructuralSolver(_structuralModel);
             var messages = structuralSolver.ValidateModel();
             var errors = messages.Where(m => m.Severity == "Error").ToList();
@@ -1070,6 +1086,8 @@ public partial class MainForm : Form
     {
         _solver = new TrussSolver();
         _structuralModel = null;
+        _projectDocument = new ProjectDocument { ProjectInfo = new ProjectInfo { Name = "Untitled Project" } };
+        _model3DNodeIds = new(); _model3DLineIds = new(); _model3DMaterialIds = new(); _model3DSectionIds = new();
         _structuralResult = null;
         dgvNodes?.Rows.Clear();
         dgvElements?.Rows.Clear();
@@ -1085,12 +1103,26 @@ public partial class MainForm : Form
     {
         using var dlg = new OpenFileDialog
         {
-            Filter = "JSON Files|*.json",
+            Filter = "GOStructAnalysis (*.gosa)|*.gosa|JSON Files|*.json",
             Title = "Open Structural Model"
         };
 
         if (dlg.ShowDialog() == DialogResult.OK)
         {
+            if (Path.GetExtension(dlg.FileName).Equals(".gosa", StringComparison.OrdinalIgnoreCase))
+            {
+                _projectDocument = new GosaProjectStore().Load(dlg.FileName);
+                var adapted = _model3DAdapter.ToStructuralModel(_projectDocument);
+                _model3DNodeIds = adapted.NodeIds.ToDictionary(pair => pair.Value, pair => pair.Key);
+                _model3DLineIds = adapted.LineObjectIds.ToDictionary(pair => pair.Value, pair => pair.Key);
+                _model3DMaterialIds = _projectDocument.Model.Materials.Where(material => int.TryParse(material.Source.SourceObjectId, out _)).ToDictionary(material => int.Parse(material.Source.SourceObjectId, CultureInfo.InvariantCulture), material => material.Id);
+                _model3DSectionIds = _projectDocument.Model.Sections.Where(section => int.TryParse(section.Source.SourceObjectId, out _)).ToDictionary(section => int.Parse(section.Source.SourceObjectId, CultureInfo.InvariantCulture), section => section.Id);
+                _structuralModel = adapted.Model;
+                _solver = new TrussSolver();
+                PopulateGrids(_structuralModel, syncDocument: false);
+                UpdateStatus($"Loaded Model3D project from {dlg.FileName}");
+                return;
+            }
             string json = File.ReadAllText(dlg.FileName);
             _structuralModel = StructureImporterExporter.ImportStructuralModelFromJson(json);
             _solver = new TrussSolver();
@@ -1100,9 +1132,12 @@ public partial class MainForm : Form
         }
     }
 
-    private void PopulateGrids(StructuralModel model)
+    private void PopulateGrids(StructuralModel model, bool syncDocument = true)
     {
         if (dgvNodes == null || dgvElements == null) return;
+
+        if (syncDocument)
+            SyncProjectDocument(model, "Imported structural model");
 
         dgvNodes.Rows.Clear();
         foreach (var node in model.Nodes)
@@ -1285,18 +1320,68 @@ public partial class MainForm : Form
     {
         using var dlg = new SaveFileDialog
         {
-            Filter = "JSON Files|*.json",
+            Filter = "GOStructAnalysis (*.gosa)|*.gosa|JSON Files|*.json",
             Title = "Save Structural Model",
-            FileName = "truss-model.json"
+            FileName = "model.gosa"
         };
 
         if (dlg.ShowDialog() == DialogResult.OK)
         {
             _structuralModel = BuildStructuralModelFromGrids();
-            File.WriteAllText(dlg.FileName, StructureImporterExporter.ExportStructuralModelToJson(_structuralModel));
+            SyncProjectDocument(_structuralModel, Path.GetFileNameWithoutExtension(dlg.FileName));
+            if (Path.GetExtension(dlg.FileName).Equals(".gosa", StringComparison.OrdinalIgnoreCase))
+                new GosaProjectStore().SaveAtomic(dlg.FileName, _projectDocument!);
+            else
+                File.WriteAllText(dlg.FileName, StructureImporterExporter.ExportStructuralModelToJson(_structuralModel));
             UpdateStatus($"Saved model to {dlg.FileName}");
         }
     }
+
+    private void SyncProjectDocument(StructuralModel model, string name)
+    {
+        var converted = _model3DAdapter.ToProjectDocument(model, new ProjectInfo { Name = string.IsNullOrWhiteSpace(name) ? "Untitled Project" : name }).Document;
+        if (_model3DNodeIds.Count != 0 || _model3DLineIds.Count != 0 || _model3DMaterialIds.Count != 0 || _model3DSectionIds.Count != 0)
+        {
+            var nodeIds = converted.Model.Nodes.ToDictionary(node => node.Id, node => PreserveId(node.Id, node.Source, _model3DNodeIds));
+            var materialIds = converted.Model.Materials.ToDictionary(material => material.Id, material => PreserveId(material.Id, material.Source, _model3DMaterialIds));
+            var sectionIds = converted.Model.Sections.ToDictionary(section => section.Id, section => PreserveId(section.Id, section.Source, _model3DSectionIds));
+            var nodes = converted.Model.Nodes.Select(node => node with { Id = nodeIds[node.Id] }).ToList();
+            var lines = converted.Model.LineObjects.Select(line => line with
+            {
+                Id = PreserveId(line.Id, line.Source, _model3DLineIds),
+                StartNodeId = nodeIds.GetValueOrDefault(line.StartNodeId, line.StartNodeId),
+                EndNodeId = nodeIds.GetValueOrDefault(line.EndNodeId, line.EndNodeId),
+                MaterialId = materialIds.GetValueOrDefault(line.MaterialId, line.MaterialId),
+                SectionId = sectionIds.GetValueOrDefault(line.SectionId, line.SectionId)
+            }).ToList();
+            converted = converted with { Model = converted.Model with
+            {
+                Nodes = nodes, LineObjects = lines,
+                Materials = converted.Model.Materials.Select(material => material with { Id = materialIds[material.Id] }).ToList(),
+                Sections = converted.Model.Sections.Select(section => section with { Id = sectionIds[section.Id] }).ToList()
+            }};
+        }
+        if (_projectDocument is { } previous)
+        {
+            var knownObjectIds = converted.Model.Nodes.Select(node => node.Id).Concat(converted.Model.LineObjects.Select(line => line.Id)).ToHashSet();
+            converted = converted with
+            {
+                Model = converted.Model with
+                {
+                    Levels = previous.Model.Levels,
+                    Grids = previous.Model.Grids,
+                    WorkingPlanes = previous.Model.WorkingPlanes,
+                    Groups = previous.Model.Groups.Where(group => group.ObjectIds.All(knownObjectIds.Contains)).ToList()
+                },
+                LoadDefinitions = converted.LoadDefinitions with { FloorAreas = previous.LoadDefinitions.FloorAreas },
+                PresentationSettings = previous.PresentationSettings
+            };
+        }
+        _projectDocument = converted;
+    }
+
+    private static Guid PreserveId(Guid generatedId, SourceMetadata source, IReadOnlyDictionary<int, Guid> legacyIds)
+        => int.TryParse(source.SourceObjectId, NumberStyles.Integer, CultureInfo.InvariantCulture, out var legacyId) && legacyIds.TryGetValue(legacyId, out var preservedId) ? preservedId : generatedId;
     
     private void ExportReport()
     {
@@ -1545,6 +1630,7 @@ public partial class MainForm : Form
 
         grid.Rows.Remove(row);
         _structuralModel = BuildStructuralModelFromGrids();
+        SyncProjectDocument(_structuralModel, _projectDocument?.ProjectInfo.Name ?? "Untitled Project");
         PopulateObjectTree();
         glView?.SetModel(_structuralModel, _structuralResult);
         UpdateStatus($"Deleted {selection.Type} {selection.Id}.");
@@ -1586,6 +1672,7 @@ public partial class MainForm : Form
         try
         {
             _structuralModel = BuildStructuralModelFromGrids();
+            SyncProjectDocument(_structuralModel, _projectDocument?.ProjectInfo.Name ?? "Untitled Project");
             var messages = new StructuralSolver(_structuralModel).ValidateModel().ToList();
             PopulateValidationGrid(messages);
             var errors = messages.Where(m => m.Severity == "Error").ToList();

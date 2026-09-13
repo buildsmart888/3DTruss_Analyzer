@@ -2,6 +2,7 @@ namespace TrussAnalyzer.Tests;
 
 using TrussAnalyzer.Core;
 using TrussAnalyzer.Core.Application;
+using TrussAnalyzer.Core.Domain.V1;
 using TrussAnalyzer.Core.Domain.V1.Adapters;
 using TrussAnalyzer.Core.Models;
 using Xunit;
@@ -146,6 +147,48 @@ public sealed class MilestoneDApplicationTests
         Assert.Equal(nodeId, endpoint.EndpointNodeId);
         Assert.Equal(new TrussAnalyzer.Core.Domain.V1.Point3DValue(1.5, 2, 3.5), grid.Position);
         Assert.Equal(PhysicalSnapKind.Grid, grid.Kind);
+    }
+
+    [Fact]
+    public void PhysicalModelSnapper_SnapsMemberMidpointBeforeGrid()
+    {
+        var a = Guid.Parse("11111111-1111-1111-1111-111111111111");
+        var b = Guid.Parse("22222222-2222-2222-2222-222222222222");
+        var member = Guid.Parse("33333333-3333-3333-3333-333333333333");
+        var document = new ProjectDocument
+        {
+            Model = new Model3D
+            {
+                Nodes = new() { new Node3D { Id = a, Position = new(0, 0, 0) }, new Node3D { Id = b, Position = new(4, 0, 0) } },
+                LineObjects = new() { new Truss3D { Id = member, StartNodeId = a, EndNodeId = b } }
+            }
+        };
+
+        var result = new PhysicalModelSnapper().Snap(document, new(2.04, 0.03, 0), .5, .01, .1);
+
+        Assert.Equal(PhysicalSnapKind.Midpoint, result.Kind);
+        Assert.Equal(member, result.GeometryObjectId);
+        Assert.Equal(new Point3DValue(2, 0, 0), result.Position);
+    }
+
+    [Fact]
+    public void PhysicalModelSnapper_SnapsCrossingMembersToIntersection()
+    {
+        var n1 = Guid.NewGuid(); var n2 = Guid.NewGuid(); var n3 = Guid.NewGuid(); var n4 = Guid.NewGuid();
+        var m1 = Guid.NewGuid(); var m2 = Guid.NewGuid();
+        var document = new ProjectDocument
+        {
+            Model = new Model3D
+            {
+                Nodes = new() { new Node3D { Id = n1, Position = new(-2, -2, 0) }, new Node3D { Id = n2, Position = new(2, 2, 0) }, new Node3D { Id = n3, Position = new(-2, 2, 0) }, new Node3D { Id = n4, Position = new(2, -2, 0) } },
+                LineObjects = new() { new Frame3D { Id = m1, StartNodeId = n1, EndNodeId = n2 }, new Frame3D { Id = m2, StartNodeId = n3, EndNodeId = n4 } }
+            }
+        };
+
+        var result = new PhysicalModelSnapper().Snap(document, new(.03, -.02, 0), .5, .01, .1);
+
+        Assert.Equal(PhysicalSnapKind.Intersection, result.Kind);
+        Assert.Equal(new Point3DValue(0, 0, 0), result.Position);
     }
 
     private static StructuralModel CreateStableTruss()

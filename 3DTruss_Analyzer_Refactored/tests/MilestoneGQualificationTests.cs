@@ -32,7 +32,7 @@ public sealed class MilestoneGQualificationTests
     [Fact]
     public void SparsePrototype_MatchesDenseOnLargePositiveDefiniteSystem()
     {
-        const int size = 120;
+        const int size = 300;
         var matrix = new double[size, size];
         var rhs = new double[size];
         for (int i = 0; i < size; i++)
@@ -49,6 +49,6 @@ public sealed class MilestoneGQualificationTests
 
         Assert.Equal(dense.Length, sparse.Length);
         for (int i = 0; i < size; i++) Assert.Equal(dense[i], sparse[i], precision: 10);
-        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5));
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(10));
     }
 }

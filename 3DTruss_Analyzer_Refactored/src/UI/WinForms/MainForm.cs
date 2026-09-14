@@ -50,10 +50,13 @@ public partial class MainForm : Form
     private Dictionary<int, Guid> _model3DMaterialIds = new();
     private Dictionary<int, Guid> _model3DSectionIds = new();
     private bool _syncingSelection;
+    private bool _isDirty;
+    private string? _currentProjectPath;
     
     public MainForm()
     {
         InitializeComponent();
+        WireEngineeringGridChangeTracking();
         LoadSampleStructure();
     }
     
@@ -447,6 +450,42 @@ public partial class MainForm : Form
         AllowUserToAddRows = true,
         AllowUserToDeleteRows = true
     };
+
+    private void WireEngineeringGridChangeTracking()
+    {
+        foreach (var grid in new[] { dgvNodes, dgvElements, dgvMaterials, dgvSections, dgvLoads, dgvCombinations })
+        {
+            if (grid == null)
+                continue;
+            grid.CellEndEdit += (_, _) => MarkEngineeringDataChanged();
+            grid.UserDeletedRow += (_, _) => MarkEngineeringDataChanged();
+        }
+    }
+
+    private void MarkEngineeringDataChanged()
+    {
+        bool hadCurrentResults = _structuralResult != null || _solver.LastResult != null;
+        _structuralResult = null;
+        _solver = new TrussSolver();
+        dgvResults?.Rows.Clear();
+        dgvForces?.Rows.Clear();
+        dgvStations?.Rows.Clear();
+        dgvDesignChecks?.Rows.Clear();
+        if (_structuralModel != null)
+            glView?.SetModel(_structuralModel, null);
+        SetDirty(true);
+        if (hadCurrentResults)
+            UpdateStatus("Results are stale because engineering data changed. Run analysis again before viewing or exporting results.");
+    }
+
+    private void SetDirty(bool dirty)
+    {
+        _isDirty = dirty;
+        string documentName = _currentProjectPath == null
+            ? _projectDocument?.ProjectInfo.Name ?? "Untitled Project"
+            : Path.GetFileName(_currentProjectPath);
+        Text = $"{ProductIdentity.Name} - {documentName}{(_isDirty ? " *" : string.Empty)} - Engineering Preview";
+    }
     
     private void CreateResultsTab(TabPage tab)
     {
@@ -696,7 +735,6 @@ public partial class MainForm : Form
                 grid.ClearSelection();
                 row.Selected = true;
                 grid.CurrentCell = row.Cells[0];
-                mainTabs!.SelectedIndex = 0;
                 return;
             }
         }
@@ -1093,10 +1131,19 @@ public partial class MainForm : Form
         _structuralResult = null;
         dgvNodes?.Rows.Clear();
         dgvElements?.Rows.Clear();
+        dgvMaterials?.Rows.Clear();
+        dgvSections?.Rows.Clear();
+        dgvLoads?.Rows.Clear();
+        dgvCombinations?.Rows.Clear();
+        dgvValidation?.Rows.Clear();
         dgvResults?.Rows.Clear();
         dgvForces?.Rows.Clear();
         dgvStations?.Rows.Clear();
         dgvDesignChecks?.Rows.Clear();
+        propertyGrid!.SelectedObject = null;
+        _currentProjectPath = null;
+        SetDirty(false);
+        RefreshLoadSelectors(new StructuralModel());
         glView?.SetModel(_solver, _solver.LastResult);
         PopulateObjectTree();
         UpdateStatus("New empty project created.");
@@ -1122,6 +1169,8 @@ public partial class MainForm : Form
                 _structuralModel = adapted.Model;
                 _solver = new TrussSolver();
                 PopulateGrids(_structuralModel, syncDocument: false);
+                _currentProjectPath = dlg.FileName;
+                SetDirty(false);
                 UpdateStatus($"Loaded Model3D project from {dlg.FileName}");
                 return;
             }
@@ -1130,6 +1179,8 @@ public partial class MainForm : Form
             _solver = new TrussSolver();
             PopulateGrids(_structuralModel);
             PopulateObjectTree();
+            _currentProjectPath = dlg.FileName;
+            SetDirty(false);
             UpdateStatus($"Loaded model from {dlg.FileName}");
         }
     }
@@ -1335,6 +1386,8 @@ public partial class MainForm : Form
                 new GosaProjectStore().SaveAtomic(dlg.FileName, _projectDocument!);
             else
                 File.WriteAllText(dlg.FileName, StructureImporterExporter.ExportStructuralModelToJson(_structuralModel));
+            _currentProjectPath = dlg.FileName;
+            SetDirty(false);
             UpdateStatus($"Saved model to {dlg.FileName}");
         }
     }
@@ -1409,6 +1462,10 @@ public partial class MainForm : Form
             {
                 ExportStructuralResult(dlg.FileName, _structuralResult, _structuralModel);
             }
+            else if (dlg.FilterIndex == 2 && _structuralResult != null)
+            {
+                ExportStructuralResultCsv(dlg.FileName, _structuralResult);
+            }
             else if (dlg.FilterIndex == 2 && _solver.LastResult != null)
             {
                 StructureImporterExporter.ExportResultsToCsv(_solver.LastResult, dlg.FileName);
@@ -1418,9 +1475,21 @@ public partial class MainForm : Form
                 var pdf = new Core.Reporting.PdfReportGenerator(_solver.LastResult);
                 pdf.SaveToFile(dlg.FileName);
             }
+            else if (dlg.FilterIndex == 3)
+            {
+                MessageBox.Show("PDF export is not yet connected to the selected Frame3D result. No file was written.",
+                    "Export unavailable", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
             else if (dlg.FilterIndex == 4 && _structuralResult != null)
             {
                 File.WriteAllText(dlg.FileName, JsonSerializer.Serialize(_structuralResult, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            else if (dlg.FilterIndex == 4)
+            {
+                MessageBox.Show("JSON export is not available for the selected legacy result. No file was written.",
+                    "Export unavailable", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
             }
             else
             {
@@ -1504,6 +1573,36 @@ public partial class MainForm : Form
             writer.WriteLine($"{c.ElementId},{c.CheckType},{c.Demand:E4},{c.Capacity:E4},{c.Utilization:F3},{c.Status},{c.Notes}");
         }
     }
+
+    private static void ExportStructuralResultCsv(string filePath, StructuralAnalysisResult result)
+    {
+        using var writer = new StreamWriter(filePath);
+        writer.WriteLine("RecordType,LoadCase,ObjectId,Station,Component,Value,Unit");
+        foreach (var node in result.NodeResults)
+        {
+            WriteCsvResult(writer, "Node", result.LoadCaseName, node.NodeId, "", "UX", node.Displacement.X, "m");
+            WriteCsvResult(writer, "Node", result.LoadCaseName, node.NodeId, "", "UY", node.Displacement.Y, "m");
+            WriteCsvResult(writer, "Node", result.LoadCaseName, node.NodeId, "", "UZ", node.Displacement.Z, "m");
+            WriteCsvResult(writer, "Node", result.LoadCaseName, node.NodeId, "", "RX", node.ReactionForce.X, "N");
+            WriteCsvResult(writer, "Node", result.LoadCaseName, node.NodeId, "", "RY", node.ReactionForce.Y, "N");
+            WriteCsvResult(writer, "Node", result.LoadCaseName, node.NodeId, "", "RZ", node.ReactionForce.Z, "N");
+        }
+        foreach (var station in result.ElementResults.SelectMany(element => element.StationResults))
+        {
+            string position = $"{station.RelativePosition.ToString("R", CultureInfo.InvariantCulture)}:{station.DiagramSide}";
+            WriteCsvResult(writer, "MemberStation", result.LoadCaseName, station.ElementId, position, "N", station.AxialForce, "N");
+            WriteCsvResult(writer, "MemberStation", result.LoadCaseName, station.ElementId, position, "Vy", station.ShearY, "N");
+            WriteCsvResult(writer, "MemberStation", result.LoadCaseName, station.ElementId, position, "Vz", station.ShearZ, "N");
+            WriteCsvResult(writer, "MemberStation", result.LoadCaseName, station.ElementId, position, "T", station.Torsion, "N-m");
+            WriteCsvResult(writer, "MemberStation", result.LoadCaseName, station.ElementId, position, "My", station.MomentY, "N-m");
+            WriteCsvResult(writer, "MemberStation", result.LoadCaseName, station.ElementId, position, "Mz", station.MomentZ, "N-m");
+        }
+    }
+
+    private static void WriteCsvResult(StreamWriter writer, string recordType, string loadCase, int objectId, string station, string component, double value, string unit)
+        => writer.WriteLine(string.Join(',', recordType, Csv(loadCase), objectId.ToString(CultureInfo.InvariantCulture), station, component, value.ToString("R", CultureInfo.InvariantCulture), unit));
+
+    private static string Csv(string value) => $"\"{value.Replace("\"", "\"\"")}\"";
     
     private void ExportToTextFile(string filePath)
     {
@@ -1563,6 +1662,7 @@ public partial class MainForm : Form
         if (dgvNodes == null) return;
         int nextId = GetNextGridId(dgvNodes);
         dgvNodes.Rows.Add(nextId, 0, 0, 0, false, false, false, false, false, false, 0, 0, 0, 0, 0, 0);
+        MarkEngineeringDataChanged();
         _structuralModel = BuildStructuralModelFromGrids();
         SyncProjectDocument(_structuralModel, _projectDocument?.ProjectInfo.Name ?? "Untitled Project");
         PopulateObjectTree();
@@ -1583,6 +1683,7 @@ public partial class MainForm : Form
         int startNode = nodeRows.Count > 0 ? Convert.ToInt32(nodeRows[0].Cells["Id"].Value, CultureInfo.InvariantCulture) : 1;
         int endNode = nodeRows.Count > 1 ? Convert.ToInt32(nodeRows[1].Cells["Id"].Value, CultureInfo.InvariantCulture) : startNode;
         dgvElements.Rows.Add(nextId, type.ToString(), 1, 1, startNode, endNode, 0.001, 1e-6, 1e-6, 5e-7, 200e9, 7850, MaterialType.Steel.ToString(), 250e6, 0, false, false, false, false);
+        MarkEngineeringDataChanged();
         _structuralModel = BuildStructuralModelFromGrids();
         SyncProjectDocument(_structuralModel, _projectDocument?.ProjectInfo.Name ?? "Untitled Project");
         PopulateObjectTree();
@@ -1599,6 +1700,7 @@ public partial class MainForm : Form
         int nodeId = selection.Type == SelectedModelObjectType.Node ? selection.Id : GetFirstGridId(dgvNodes);
         string caseId = GetActiveCaseId();
         dgvLoads.Rows.Add("Nodal", caseId, nodeId, "", 0.5, 0, 1, LoadDirection.GlobalZ.ToString(), 0, 0, -1000, 0, 0, 0);
+        MarkEngineeringDataChanged();
         mainTabs!.SelectedIndex = 0;
         UpdateStatus($"Added nodal load on node {nodeId} in load case {caseId}.");
     }
@@ -1611,6 +1713,7 @@ public partial class MainForm : Form
         int elementId = selection.Type == SelectedModelObjectType.Element ? selection.Id : GetFirstGridId(dgvElements);
         string caseId = GetActiveCaseId();
         dgvLoads.Rows.Add("MemberDistributed", caseId, "", elementId, 0.5, 0, 1, LoadDirection.GlobalZ.ToString(), 0, 0, -1000, 0, 0, 0);
+        MarkEngineeringDataChanged();
         mainTabs!.SelectedIndex = 0;
         UpdateStatus($"Added distributed load on element {elementId} in load case {caseId}.");
     }
@@ -1634,6 +1737,7 @@ public partial class MainForm : Form
         object?[] values = source.Cells.Cast<DataGridViewCell>().Select(c => c.Value).ToArray();
         values[0] = nextId;
         grid.Rows.Add(values);
+        MarkEngineeringDataChanged();
         SelectGridRow(new SelectedModelObject { Type = selection.Type, Id = nextId, Name = selection.Name });
         UpdateStatus($"Duplicated {selection.Type} {selection.Id} to {nextId}.");
     }
@@ -1656,6 +1760,7 @@ public partial class MainForm : Form
             return;
 
         grid.Rows.Remove(row);
+        MarkEngineeringDataChanged();
         _structuralModel = BuildStructuralModelFromGrids();
         SyncProjectDocument(_structuralModel, _projectDocument?.ProjectInfo.Name ?? "Untitled Project");
         PopulateObjectTree();

@@ -12,6 +12,7 @@ using TrussAnalyzer.Core.IO.Projects;
 using TrussAnalyzer.Core.Domain.V1;
 using TrussAnalyzer.Core.Domain.V1.Adapters;
 using TrussAnalyzer.Core.Models;
+using TrussAnalyzer.Core.Application;
 using TrussAnalyzer.UI.WinForms.Controls;
 
 /// <summary>
@@ -43,6 +44,7 @@ public partial class MainForm : Form
     private TextBox? txtStatus;
     private StructuralModel? _structuralModel;
     private StructuralAnalysisResult? _structuralResult;
+    private AnalysisSnapshot? _selectedSnapshot;
     private ProjectDocument? _projectDocument;
     private readonly StructuralModelModel3DAdapter _model3DAdapter = new();
     private Dictionary<int, Guid> _model3DNodeIds = new();
@@ -466,6 +468,7 @@ public partial class MainForm : Form
     {
         bool hadCurrentResults = _structuralResult != null || _solver.LastResult != null;
         _structuralResult = null;
+        _selectedSnapshot = null;
         _solver = new TrussSolver();
         dgvResults?.Rows.Clear();
         dgvForces?.Rows.Clear();
@@ -819,6 +822,7 @@ public partial class MainForm : Form
         _structuralModel = null;
         _model3DNodeIds = new(); _model3DLineIds = new(); _model3DMaterialIds = new(); _model3DSectionIds = new();
         _structuralResult = null;
+        _selectedSnapshot = null;
         
         // Simple tripod example
         var material = Material.StructuralSteel;
@@ -859,6 +863,7 @@ public partial class MainForm : Form
         _solver = new TrussSolver();
         _model3DNodeIds = new(); _model3DLineIds = new(); _model3DMaterialIds = new(); _model3DSectionIds = new();
         _structuralResult = null;
+        _selectedSnapshot = null;
 
         var model = new StructuralModel();
         model.Nodes.AddRange(new[]
@@ -1037,6 +1042,7 @@ public partial class MainForm : Form
                     ? structuralSolver.Analyze(selectedLoadCase)
                     : structuralSolver.Analyze();
             _structuralResult = result;
+            _selectedSnapshot = CaptureSelectedSnapshot(result, selectedLoadCase, selectedCombination);
             
             if (result.Equilibrium.IsSatisfied)
             {
@@ -1053,6 +1059,30 @@ public partial class MainForm : Form
             MessageBox.Show($"Analysis failed: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             UpdateStatus($"Analysis failed: {ex.Message}");
         }
+    }
+
+    private AnalysisSnapshot CaptureSelectedSnapshot(StructuralAnalysisResult result, string selectedLoadCase, string selectedCombination)
+    {
+        if (_projectDocument == null || _structuralModel == null)
+            throw new InvalidOperationException("The active ProjectDocument is unavailable for result capture.");
+
+        ProjectAnalysisRequest request;
+        if (selectedCombination != "None")
+        {
+            int index = _structuralModel.LoadCombinations.FindIndex(value => value.CombinationId == selectedCombination);
+            Guid selectionId = index >= 0 && index < _projectDocument.LoadDefinitions.LoadCombinations.Count
+                ? _projectDocument.LoadDefinitions.LoadCombinations[index].Id
+                : Guid.Empty;
+            request = new ProjectAnalysisRequest(ProjectAnalysisSelectionKind.LoadCombination, selectionId);
+        }
+        else
+        {
+            Guid selectionId = _projectDocument.LoadDefinitions.LoadPatterns
+                .FirstOrDefault(value => string.Equals(value.Source.SourceObjectId, selectedLoadCase, StringComparison.OrdinalIgnoreCase))?.Id
+                ?? Guid.Empty;
+            request = new ProjectAnalysisRequest(ProjectAnalysisSelectionKind.LoadPattern, selectionId);
+        }
+        return new ProjectAnalysisService(_model3DAdapter).CaptureResult(_projectDocument, request, result);
     }
     
     private void DisplayResults(AnalysisResult result)
@@ -1129,6 +1159,7 @@ public partial class MainForm : Form
         _projectDocument = new ProjectDocument { ProjectInfo = new ProjectInfo { Name = "Untitled Project" } };
         _model3DNodeIds = new(); _model3DLineIds = new(); _model3DMaterialIds = new(); _model3DSectionIds = new();
         _structuralResult = null;
+        _selectedSnapshot = null;
         dgvNodes?.Rows.Clear();
         dgvElements?.Rows.Clear();
         dgvMaterials?.Rows.Clear();
@@ -1440,7 +1471,7 @@ public partial class MainForm : Form
     
     private void ExportReport()
     {
-        if (_structuralResult == null && _solver.LastResult == null)
+        if (_selectedSnapshot == null && _structuralResult == null && _solver.LastResult == null)
         {
             MessageBox.Show("Please run analysis first.", "Info");
             return;
@@ -1448,13 +1479,13 @@ public partial class MainForm : Form
         
         var dlg = new SaveFileDialog
         {
-            Filter = "Text File|*.txt|CSV File|*.csv|PDF File|*.pdf|JSON File|*.json|PNG Image|*.png",
+            Filter = "Text File|*.txt|CSV File|*.csv|Excel Workbook|*.xlsx|PDF File|*.pdf|JSON File|*.json|PNG Image|*.png",
             Title = "Export Analysis Report"
         };
         
         if (dlg.ShowDialog() == DialogResult.OK)
         {
-            if (dlg.FilterIndex == 5)
+            if (dlg.FilterIndex == 6)
             {
                 ExportViewportImage(dlg.FileName);
             }
@@ -1462,30 +1493,40 @@ public partial class MainForm : Form
             {
                 ExportStructuralResult(dlg.FileName, _structuralResult, _structuralModel);
             }
-            else if (dlg.FilterIndex == 2 && _structuralResult != null)
+            else if (dlg.FilterIndex == 2 && _selectedSnapshot != null)
             {
-                ExportStructuralResultCsv(dlg.FileName, _structuralResult);
+                File.WriteAllText(dlg.FileName, new AnalysisResultExportService().ToCsv(_selectedSnapshot));
             }
             else if (dlg.FilterIndex == 2 && _solver.LastResult != null)
             {
                 StructureImporterExporter.ExportResultsToCsv(_solver.LastResult, dlg.FileName);
             }
-            else if (dlg.FilterIndex == 3 && _solver.LastResult != null)
+            else if (dlg.FilterIndex == 3 && _selectedSnapshot != null)
+            {
+                new AnalysisResultXlsxExporter().Save(_selectedSnapshot, dlg.FileName);
+            }
+            else if (dlg.FilterIndex == 3)
+            {
+                MessageBox.Show("XLSX export requires a current analysis snapshot. No file was written.",
+                    "Export unavailable", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            else if (dlg.FilterIndex == 4 && _solver.LastResult != null)
             {
                 var pdf = new Core.Reporting.PdfReportGenerator(_solver.LastResult);
                 pdf.SaveToFile(dlg.FileName);
             }
-            else if (dlg.FilterIndex == 3)
+            else if (dlg.FilterIndex == 4)
             {
                 MessageBox.Show("PDF export is not yet connected to the selected Frame3D result. No file was written.",
                     "Export unavailable", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            else if (dlg.FilterIndex == 4 && _structuralResult != null)
+            else if (dlg.FilterIndex == 5 && _selectedSnapshot != null)
             {
-                File.WriteAllText(dlg.FileName, JsonSerializer.Serialize(_structuralResult, new JsonSerializerOptions { WriteIndented = true }));
+                File.WriteAllText(dlg.FileName, new AnalysisResultExportService().ToJson(_selectedSnapshot));
             }
-            else if (dlg.FilterIndex == 4)
+            else if (dlg.FilterIndex == 5)
             {
                 MessageBox.Show("JSON export is not available for the selected legacy result. No file was written.",
                     "Export unavailable", MessageBoxButtons.OK, MessageBoxIcon.Information);

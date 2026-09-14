@@ -101,6 +101,19 @@ public sealed class ProjectAnalysisService
         }
     }
 
+    /// <summary>Captures an already-computed result in the immutable application result contract.</summary>
+    public AnalysisSnapshot CaptureResult(ProjectDocument document, ProjectAnalysisRequest request, StructuralAnalysisResult result)
+    {
+        ArgumentNullException.ThrowIfNull(document);
+        ArgumentNullException.ThrowIfNull(result);
+        var adapted = _adapter.ToStructuralModel(document);
+        var messages = adapted.Diagnostics.Select(diagnostic => new AnalysisPreflightMessage(
+            diagnostic.Code, diagnostic.Severity == AdapterDiagnosticSeverity.Error ? "Error" : "Warning", diagnostic.Message)).ToArray();
+        if (messages.Any(message => string.Equals(message.Severity, "Error", StringComparison.Ordinal)))
+            throw new InvalidOperationException("Cannot capture an analysis snapshot from a document with adapter errors.");
+        return BuildSnapshot(document, request, adapted, result, messages);
+    }
+
     /// <summary>Runs every declared load pattern and combination independently, preserving each snapshot identity.</summary>
     public IReadOnlyList<ProjectAnalysisResult> AnalyzeAll(ProjectDocument document, CancellationToken cancellationToken = default, IProgress<double>? progress = null)
     {

@@ -69,13 +69,18 @@ public sealed class MilestoneDApplicationTests
     {
         var converted = new StructuralModelModel3DAdapter().ToProjectDocument(CreateStableTruss());
         var progressValues = new List<double>();
-        var results = new ProjectAnalysisService().AnalyzeAll(converted.Document, progress: new Progress<double>(progressValues.Add));
+        var results = new ProjectAnalysisService().AnalyzeAll(converted.Document, progress: new InlineProgress<double>(progressValues.Add));
 
         Assert.NotEmpty(results);
         Assert.Equal(1d, progressValues[^1]);
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         Assert.Throws<OperationCanceledException>(() => new ProjectAnalysisService().AnalyzeAll(converted.Document, cancellation.Token));
+    }
+
+    private sealed class InlineProgress<T>(Action<T> report) : IProgress<T>
+    {
+        public void Report(T value) => report(value);
     }
 
     [Fact]

@@ -23,14 +23,14 @@ public sealed class AnalysisResultXlsxExporter
 
     private static string BuildSheet(AnalysisSnapshot snapshot)
     {
-        var rows = new List<string> { Row("GOStructAnalysis Result Export v1", "", ""), Row("Document checksum", snapshot.DocumentChecksum, ""), Row("Solver", snapshot.SolverName, snapshot.SolverVersion), Row("Node ID", "DX (m)", "DY (m)", "DZ (m)") };
-        rows.AddRange(snapshot.Nodes.OrderBy(n => n.NodeId).Select(n => Row(n.NodeId.ToString(), F(n.Displacement.X), F(n.Displacement.Y), F(n.Displacement.Z))));
-        rows.Add(Row("Member ID", "Station", "N (N)", "Vy (N)", "Vz (N)", "T (N-m)", "My (N-m)", "Mz (N-m)"));
-        rows.AddRange(snapshot.Members.OrderBy(m => m.LineObjectId).SelectMany(m => m.Result.StationResults.OrderBy(s => s.RelativePosition).Select(s => Row(m.LineObjectId.ToString(), F(s.RelativePosition), F(s.AxialForce), F(s.ShearY), F(s.ShearZ), F(s.Torsion), F(s.MomentY), F(s.MomentZ)))));
-        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>" + string.Join("", rows.Select((row, i) => $"<row r=\"{i + 1}\">{row}</row>")) + "</sheetData></worksheet>";
+        var rows = new List<string[]> { new[] { "GOStructAnalysis Result Export v1", "", "" }, new[] { "Document checksum", snapshot.DocumentChecksum, "" }, new[] { "Selection", snapshot.SelectionKind.ToString(), snapshot.SelectionId.ToString() }, new[] { "Solver", snapshot.SolverName, snapshot.SolverVersion }, new[] { "Node ID", "DX (m)", "DY (m)", "DZ (m)" } };
+        rows.AddRange(snapshot.Nodes.OrderBy(n => n.NodeId).Select(n => new[] { n.NodeId.ToString(), F(n.Displacement.X), F(n.Displacement.Y), F(n.Displacement.Z) }));
+        rows.Add(new[] { "Member ID", "Station", "Side", "N (N)", "Vy (N)", "Vz (N)", "T (N-m)", "My (N-m)", "Mz (N-m)" });
+        rows.AddRange(snapshot.Members.OrderBy(m => m.LineObjectId).SelectMany(m => m.Result.StationResults.OrderBy(s => s.RelativePosition).ThenBy(s => s.DiagramSide).Select(s => new[] { m.LineObjectId.ToString(), F(s.RelativePosition), s.DiagramSide.ToString(), F(s.AxialForce), F(s.ShearY), F(s.ShearZ), F(s.Torsion), F(s.MomentY), F(s.MomentZ) })));
+        return "<?xml version=\"1.0\" encoding=\"UTF-8\"?><worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>" + string.Join("", rows.Select((row, index) => $"<row r=\"{index + 1}\">{Row(index + 1, row)}</row>")) + "</sheetData></worksheet>";
     }
 
-    private static string Row(params string[] values) => string.Join("", values.Select((value, i) => $"<c r=\"{Column(i)}\" t=\"inlineStr\"><is><t>{Escape(value)}</t></is></c>"));
+    private static string Row(int rowNumber, params string[] values) => string.Join("", values.Select((value, i) => $"<c r=\"{Column(i)}{rowNumber}\" t=\"inlineStr\"><is><t>{Escape(value)}</t></is></c>"));
     private static string Column(int index) => ((char)('A' + index)).ToString();
     private static string Escape(string value) => SecurityElement.Escape(value) ?? string.Empty;
     private static string F(double value) => value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);

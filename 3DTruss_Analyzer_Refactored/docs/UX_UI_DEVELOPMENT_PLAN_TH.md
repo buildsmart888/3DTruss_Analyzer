@@ -71,3 +71,10 @@ Left/Right แยกกันที่ตำแหน่ง point load หรื
 - **UX-0.5 regression:** automated workflow tests และ desktop evidence ของ New/Open/Edit/Analyze/Export/Save/Reopen
 
 งานเริ่มต้นของแผนนี้คือ UX-0.1 และการหยุด silent export fallback ใน UX-0.3
+
+## Implementation Progress
+
+- 2026-09-13 — UX-0.1: New ล้างทุก engineering grid, เพิ่ม dirty/stale state และ selection ไม่บังคับออกจาก Results
+- 2026-09-13 — UX-0.4: signed envelope ต่อ member/station/component/Left-Right พร้อม governing selection
+- 2026-09-14 — UX-0.2/0.3: MainForm จับ selected `AnalysisSnapshot` พร้อม document checksum;
+  CSV, JSON และ XLSX ใช้ snapshot เดียวกัน และ XLSX ใช้ OpenXML cell references ที่ถูกต้อง

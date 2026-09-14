@@ -1,5 +1,6 @@
 namespace TrussAnalyzer.Tests;
 
+using TrussAnalyzer.Core;
 using TrussAnalyzer.Core.Application;
 using TrussAnalyzer.Core.Domain.V1.Adapters;
 using TrussAnalyzer.Core.Models;
@@ -30,6 +31,14 @@ public sealed class MilestoneHResultExportTests
         Assert.Contains("N (N)", csv);
         Assert.Contains(snapshot.DocumentChecksum, csv);
         Assert.Contains(snapshot.DocumentChecksum, json);
+
+        var captured = new ProjectAnalysisService().CaptureResult(document,
+            new ProjectAnalysisRequest(ProjectAnalysisSelectionKind.LoadPattern, pattern.Id),
+            new StructuralSolver(new StructuralModelModel3DAdapter().ToStructuralModel(document).Model).Analyze("L"));
+        Assert.Equal(snapshot.SelectionId, captured.SelectionId);
+        Assert.Equal(snapshot.DocumentChecksum, captured.DocumentChecksum);
+        Assert.Equal(snapshot.Nodes.Count, captured.Nodes.Count);
+        Assert.Equal(snapshot.Members.Count, captured.Members.Count);
     }
 
     [Fact]
@@ -42,7 +51,10 @@ public sealed class MilestoneHResultExportTests
         using var archive = ZipFile.OpenRead(path);
         Assert.Contains(archive.Entries, entry => entry.FullName == "[Content_Types].xml");
         Assert.Contains(archive.Entries, entry => entry.FullName == "xl/worksheets/sheet1.xml");
-        Assert.Contains("ABC", Read(archive.GetEntry("xl/worksheets/sheet1.xml")!));
+        var sheet = Read(archive.GetEntry("xl/worksheets/sheet1.xml")!);
+        Assert.Contains("ABC", sheet);
+        Assert.Contains("r=\"A1\"", sheet);
+        Assert.DoesNotContain("r=\"A\" ", sheet);
     }
 
     private static string Read(ZipArchiveEntry entry) { using var reader = new StreamReader(entry.Open()); return reader.ReadToEnd(); }

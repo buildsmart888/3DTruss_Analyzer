@@ -3,6 +3,7 @@ namespace TrussAnalyzer.Tests;
 using TrussAnalyzer.Core;
 using TrussAnalyzer.Core.Application;
 using TrussAnalyzer.Core.Domain.V1.Adapters;
+using TrussAnalyzer.Core.IO.Projects;
 using TrussAnalyzer.Core.Models;
 using System.IO.Compression;
 using Xunit;
@@ -55,6 +56,68 @@ public sealed class MilestoneHResultExportTests
         Assert.Contains("ABC", sheet);
         Assert.Contains("r=\"A1\"", sheet);
         Assert.DoesNotContain("r=\"A\" ", sheet);
+    }
+
+    [Fact]
+    public void SnapshotPdfExport_WritesValidObjectOffsetsAndSelectedResultMetadata()
+    {
+        var snapshot = new AnalysisSnapshot
+        {
+            DocumentChecksum = "CHECKSUM-123",
+            SelectionId = Guid.Parse("12345678-1234-1234-1234-123456789abc"),
+            SolverName = "QualifiedDense"
+        };
+        byte[] bytes = new AnalysisSnapshotPdfExporter().Generate(snapshot);
+        string pdf = System.Text.Encoding.ASCII.GetString(bytes);
+
+        Assert.StartsWith("%PDF-1.4", pdf);
+        Assert.Contains("CHECKSUM-123", pdf);
+        Assert.Contains("QualifiedDense", pdf);
+        var lines = pdf.Split('\n');
+        int xref = Array.IndexOf(lines, "xref");
+        Assert.True(xref > 0);
+        foreach (string entry in lines.Skip(xref + 3).Take(5))
+        {
+            int offset = int.Parse(entry[..10], System.Globalization.CultureInfo.InvariantCulture);
+            Assert.Matches("[1-5] 0 obj", pdf[offset..]);
+        }
+    }
+
+    [Fact]
+    public void WorkflowRegression_EditAnalyzeExportSaveReopenPreservesIdentityAndProvenance()
+    {
+        var model = new StructuralModel();
+        model.Materials.Add(Material.StructuralSteel with { Id = 1 });
+        model.Sections.Add(Section.Generic(1, "Bar", .01, 1e-6, 1e-6, 1e-6));
+        model.Nodes.Add(new Node(1, new Point3D(0, 0, 0)) { ConstraintX = true, ConstraintY = true, ConstraintZ = true, ConstraintRX = true, ConstraintRY = true, ConstraintRZ = true });
+        model.Nodes.Add(new Node(2, new Point3D(2, 0, 0)) { ConstraintY = true, ConstraintZ = true, ConstraintRX = true, ConstraintRY = true, ConstraintRZ = true });
+        model.Elements.Add(new TrussElement(1, 1, 2, 1, 1));
+        model.LoadCases.Add(new LoadCase { CaseId = "L", NodeForces = { [2] = new ForceVector(1000, 0, 0) } });
+        var adapter = new StructuralModelModel3DAdapter();
+        var document = adapter.ToProjectDocument(model).Document;
+        var originalIds = document.Model.Nodes.Select(value => value.Id).Concat(document.Model.LineObjects.Select(value => value.Id)).ToArray();
+
+        var movedNodes = document.Model.Nodes.Select(value => value.Source.SourceObjectId == "2"
+            ? value with { Position = value.Position with { X = 3 } }
+            : value).ToList();
+        var edited = document with { Model = document.Model with { Nodes = movedNodes } };
+        var pattern = edited.LoadDefinitions.LoadPatterns.Single(value => value.Source.SourceObjectId == "L");
+        var analysis = new ProjectAnalysisService().Analyze(edited, new(ProjectAnalysisSelectionKind.LoadPattern, pattern.Id));
+        var snapshot = Assert.IsType<AnalysisSnapshot>(analysis.Snapshot);
+        var export = new AnalysisResultExportService();
+
+        Assert.Contains(snapshot.DocumentChecksum, export.ToCsv(snapshot));
+        Assert.Contains(snapshot.DocumentChecksum, export.ToJson(snapshot));
+        Assert.Contains(snapshot.DocumentChecksum, System.Text.Encoding.ASCII.GetString(new AnalysisSnapshotPdfExporter().Generate(snapshot)));
+
+        using var directory = new TemporaryDirectory();
+        string path = Path.Combine(directory.Path, "workflow.gosa");
+        new GosaProjectStore().SaveAtomic(path, edited);
+        var reopened = new GosaProjectStore().Load(path);
+        var reopenedIds = reopened.Model.Nodes.Select(value => value.Id).Concat(reopened.Model.LineObjects.Select(value => value.Id)).ToArray();
+        Assert.Equal(originalIds, reopenedIds);
+        var reopenedAnalysis = new ProjectAnalysisService().Analyze(reopened, new(ProjectAnalysisSelectionKind.LoadPattern, pattern.Id));
+        Assert.Equal(snapshot.DocumentChecksum, Assert.IsType<AnalysisSnapshot>(reopenedAnalysis.Snapshot).DocumentChecksum);
     }
 
     private static string Read(ZipArchiveEntry entry) { using var reader = new StreamReader(entry.Open()); return reader.ReadToEnd(); }

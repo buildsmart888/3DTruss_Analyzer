@@ -1511,14 +1511,13 @@ public partial class MainForm : Form
                     "Export unavailable", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-            else if (dlg.FilterIndex == 4 && _solver.LastResult != null)
+            else if (dlg.FilterIndex == 4 && _selectedSnapshot != null)
             {
-                var pdf = new Core.Reporting.PdfReportGenerator(_solver.LastResult);
-                pdf.SaveToFile(dlg.FileName);
+                new AnalysisSnapshotPdfExporter().Save(_selectedSnapshot, dlg.FileName);
             }
             else if (dlg.FilterIndex == 4)
             {
-                MessageBox.Show("PDF export is not yet connected to the selected Frame3D result. No file was written.",
+                MessageBox.Show("PDF export requires a current analysis snapshot. No file was written.",
                     "Export unavailable", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }

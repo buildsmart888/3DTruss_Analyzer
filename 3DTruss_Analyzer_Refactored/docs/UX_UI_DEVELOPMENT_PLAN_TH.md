@@ -43,7 +43,7 @@ Left/Right แยกกันที่ตำแหน่ง point load หรื
 
 | Capability | มีใน Core | เชื่อม UI | Automated test | Desktop test |
 | --- | --- | --- | --- | --- |
-| UX-0 document/state/export | In progress | In progress | Pending | Pending |
+| UX-0 document/state/export | Implemented | Implemented | Passed | Pending |
 | UX-1 workspace/DPI | Partial | Partial | Pending | Pending |
 | UX-2 modeling | Implemented | Partial | Partial | Partial |
 | UX-3 loads | Implemented | Partial | Partial | Pending |
@@ -78,3 +78,7 @@ Left/Right แยกกันที่ตำแหน่ง point load หรื
 - 2026-09-13 — UX-0.4: signed envelope ต่อ member/station/component/Left-Right พร้อม governing selection
 - 2026-09-14 — UX-0.2/0.3: MainForm จับ selected `AnalysisSnapshot` พร้อม document checksum;
   CSV, JSON และ XLSX ใช้ snapshot เดียวกัน และ XLSX ใช้ OpenXML cell references ที่ถูกต้อง
+- 2026-09-14 — UX-0.3/0.5: PDF ใช้ selected snapshot พร้อม xref offsets ที่ตรวจสอบได้;
+  automated workflow regression ผ่าน Edit → Analyze → CSV/JSON/PDF → Save/Reopen และยืนยัน checksum/stable IDs
+
+UX-0 ยังรอ desktop acceptance ของ New → Edit → Analyze → Export → Save/Reopen ก่อนเปลี่ยนสถานะเป็น Complete
